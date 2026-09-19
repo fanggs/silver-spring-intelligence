@@ -22,6 +22,12 @@ const sourceCards =
     );
 
 
+const dataCards =
+    document.querySelectorAll(
+        ".data-card"
+    );
+
+
 /*
     Small movement effect
     inside the geographic hero.
@@ -121,14 +127,49 @@ navLinks.forEach(
 
 
 /*
-    Make the source rows keyboard
-    focusable for later interaction.
+    Make the mission rows
+    keyboard focusable.
 */
 
 sourceCards.forEach(
     function(card) {
 
         card.tabIndex = 0;
+
+    }
+);
+
+
+/*
+    Add a subtle interactive
+    state to the data cards.
+*/
+
+dataCards.forEach(
+    function(card) {
+
+        card.addEventListener(
+            "mouseenter",
+            function() {
+
+                card.classList.add(
+                    "is-hovered"
+                );
+
+            }
+        );
+
+
+        card.addEventListener(
+            "mouseleave",
+            function() {
+
+                card.classList.remove(
+                    "is-hovered"
+                );
+
+            }
+        );
 
     }
 );
