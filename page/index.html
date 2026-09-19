@@ -16,7 +16,7 @@
     >
 
     <title>
-        CivicLens — Fenton Village Community Intelligence
+        CivicLens — Silver Spring Community Intelligence
     </title>
 
     <link
@@ -97,7 +97,7 @@
 
                     <span></span>
 
-                    FENTON VILLAGE
+                    SILVER SPRING
 
                 </p>
 
@@ -127,7 +127,7 @@
                     class="hero-button"
                 >
 
-                    Explore Fenton Village
+                    Explore Silver Spring
 
                     <span>
                         ↗
@@ -210,6 +210,60 @@
                 VERIFY THE SOURCE
             </p>
 
+        </section>
+
+
+        <section class="explore-section" id="explore" aria-labelledby="exploreTitle">
+            <div class="explore-heading">
+                <p class="section-label">EXPLORE / SILVER SPRING</p>
+                <h2 id="exploreTitle">Ask about a place. <em>See the evidence.</em></h2>
+                <p>Ask about demographics, housing, income, businesses, or transit. Fenton Village is one example within the wider map.</p>
+            </div>
+
+            <form id="questionForm" class="question-form">
+                <label for="questionInput">Your question</label>
+                <div class="question-row">
+                    <input id="questionInput" name="question" type="text" maxlength="500" required
+                           placeholder="Where are renter households concentrated?" autocomplete="off">
+                    <button id="askButton" type="submit">Ask CivicLens <span aria-hidden="true">↗</span></button>
+                </div>
+            </form>
+            <div class="suggestion-row" aria-label="Example questions">
+                <button class="suggestion" type="button" data-question="How does renter share vary across Silver Spring?">Renter share</button>
+                <button class="suggestion" type="button" data-question="Which tracts have the most residents ages 18 to 34?">Young adults</button>
+                <button class="suggestion" type="button" data-question="What can you tell me about Fenton Village?">Fenton Village</button>
+            </div>
+
+            <p id="connectionStatus" class="connection-status" role="status">Backend connection is not configured yet.</p>
+
+            <div class="explore-grid">
+                <section class="map-panel" aria-labelledby="mapTitle">
+                    <div class="panel-heading">
+                        <div><p class="section-label">THE PLACE</p><h3 id="mapTitle">Community map</h3></div>
+                        <p id="mapGeography">Silver Spring / Montgomery County</p>
+                    </div>
+                    <div id="mapContainer" class="map-container" role="region" aria-label="Map waiting for backend geography data">
+                        <p class="map-placeholder">Tract outlines, businesses, and transit stops will appear here when the backend provides GeoJSON.</p>
+                    </div>
+                    <p class="map-legend"><span class="legend-tract"></span> Census tract <span class="legend-business"></span> Business <span class="legend-transit"></span> Transit stop</p>
+                    <p class="map-note">Select a tract on the map to use it as a question filter. A highlighted area is not a neighborhood boundary unless the source says so.</p>
+                    <button id="clearSelection" class="text-button" type="button" hidden>Clear selected tract</button>
+                    <p id="selectedPlace" class="selected-place" aria-live="polite"></p>
+                </section>
+
+                <section class="answer-panel" aria-labelledby="answerTitle">
+                    <div class="panel-heading"><div><p class="section-label">THE EVIDENCE</p><h3 id="answerTitle">Answer</h3></div></div>
+                    <p id="answerStatus" class="answer-status" role="status" aria-live="polite">Ask a question to see a source-backed answer.</p>
+                    <div id="answerContent" hidden>
+                        <p id="answerInterpretation" class="answer-interpretation"></p>
+                        <p id="answerText" class="answer-text"></p>
+                        <dl id="answerMetrics" class="answer-metrics"></dl>
+                        <div class="answer-meta"><h4>How this was calculated</h4><p id="answerMethodology"></p></div>
+                        <div class="answer-meta"><h4>Data context</h4><p id="answerContext"></p></div>
+                        <div class="answer-meta"><h4>Sources</h4><ul id="answerSources"></ul></div>
+                    </div>
+                </section>
+            </div>
         </section>
 
 
@@ -505,6 +559,12 @@
 
             </div>
 
+        </section>
+
+        <section class="sources-section" id="sources" aria-labelledby="sourcesTitle">
+            <p class="section-label">SOURCES / METHODS</p>
+            <h2 id="sourcesTitle">Every result should show its work.</h2>
+            <p>CivicLens displays the specific source, data year, geography, and calculation with each answer. The source links above appear only when returned by the backend; this page does not claim that a dataset has been loaded when it has not.</p>
         </section>
 
     </main>
