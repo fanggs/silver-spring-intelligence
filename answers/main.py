@@ -63,7 +63,16 @@ def _ask_claude(prompt: str, max_tokens: int = 700) -> str:
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    return resp.content[0].text.strip()
+    # The response can contain thinking blocks before the text block, so
+    # never assume content[0] is the answer — find the first text block.
+    for block in resp.content:
+        if getattr(block, "type", None) == "text":
+            return block.text.strip()
+    for block in resp.content:                 # older SDKs: no .type
+        text = getattr(block, "text", None)
+        if text:
+            return text.strip()
+    raise RuntimeError("model returned no text block")
 
 
 # ---------------------------------------------------------------- endpoints
@@ -173,7 +182,7 @@ def ask(q: Question):
         "answered from these tables, output exactly: CANNOT_ANSWER"
     )
     try:
-        sql = _ask_claude(sql_prompt, max_tokens=500)
+        sql = _ask_claude(sql_prompt, max_tokens=1500)
     except Exception as exc:
         return _cannot(f"Could not reach the language model: {exc}")
 
@@ -202,7 +211,7 @@ def ask(q: Question):
         "readably. Do not mention SQL or databases."
     )
     try:
-        answer = _ask_claude(answer_prompt, max_tokens=300)
+        answer = _ask_claude(answer_prompt, max_tokens=800)
     except Exception:
         answer = f"Found {len(rows)} matching result(s)."
 
