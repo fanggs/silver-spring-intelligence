@@ -2,7 +2,7 @@
 
 /* Change only this address when Alan gives you the deployed URL. No API keys go here. */
 const API_BASE_URL = "https://silver-spring-intelligence.onrender.com";
-const SCOPE_MESSAGE = "I can't answer that from the data I have. I can tell you about population, languages spoken at home, household income, foreign-born residents, housing and commuting for Silver Spring, Maryland — plus its local businesses and the Fenton Village district — and compare Silver Spring with the rest of Montgomery County.";
+const SCOPE_MESSAGE = "I can't answer that from the data I have. I can tell you about population, languages spoken at home, household income, foreign-born residents, housing, commuting and local businesses for Silver Spring, Maryland and its neighborhoods, how those have changed since 2016, and how Silver Spring compares with the rest of Montgomery County.";
 
 function initLandingPage() {
     const heroVisual = document.getElementById("heroVisual");
@@ -707,7 +707,6 @@ function initAppPage() {
             return;
         }
 
-        // Open on wider Silver Spring, not Fenton Village alone.
         // scrollWheelZoom off: the map sits mid-page, and scrolling past it
         // otherwise zooms the map instead of the page - which is exactly what
         // a judge will do first. The +/- buttons and double-click still zoom.

@@ -194,9 +194,8 @@ RULES FOR WRITING SQL
 COVERAGE_BLURB = (
     "I can answer questions about Silver Spring, Maryland — population, "
     "household income, foreign-born residents, languages spoken at home, "
-    "housing, commuting, and 455 local businesses, including the Fenton "
-    "Village district and 60-odd named neighbourhoods. I can also compare "
-    "Silver Spring with the rest of "
-    "Montgomery County. I don't have data on other named neighborhoods, "
-    "only census tracts."
+    "housing, commuting, and 455 local businesses, across roughly 60 named "
+    "neighbourhoods and districts. I can also show how those have changed "
+    "since 2016, and compare Silver Spring with the rest of Montgomery "
+    "County."
 )
