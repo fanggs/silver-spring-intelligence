@@ -189,3 +189,46 @@ button,input{font:inherit;}
 html{scroll-behavior:auto;}
 *{transition-duration:.01ms !important;animation-duration:.01ms !important;}
 }
+
+/* Supporting values table — fixed columns so rows line up cleanly. */
+#supportTable {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
+#supportTable th,
+#supportTable td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: middle;
+    font-weight: 400;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.18);
+}
+
+#supportTable thead th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    opacity: 0.75;
+}
+
+/* Place name takes the space; the number stays narrow and right-aligned
+   so digits line up column-wise and are easy to compare. */
+#supportTable th:first-child,
+#supportTable td:first-child { width: 62%; }
+
+#supportTable th:last-child,
+#supportTable td:last-child {
+    width: 38%;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+#supportTable td.support-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

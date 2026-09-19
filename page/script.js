@@ -194,15 +194,24 @@ function initAppPage() {
             ui.sources.appendChild(item);
         }
 
+        // Name the columns after what this particular answer returned.
+        const heads = payload.table_headers || {};
+        const labelHead = document.getElementById("supportLabelHead");
+        const valueHead = document.getElementById("supportValueHead");
+        if (labelHead) labelHead.textContent = heads.label || "Result";
+        if (valueHead) valueHead.textContent = heads.value || "Value";
+
         ui.rows.replaceChildren();
 
         table.forEach((row) => {
             if (!row || typeof row !== "object") return;
 
             const tr = document.createElement("tr");
-            const label = document.createElement("th");
-            label.scope = "row";
-            label.textContent = String(row.label ?? "Measure");
+            // Both cells are <td> so the columns line up — a <th> row header
+            // picks up different default padding and weight.
+            const label = document.createElement("td");
+            label.className = "support-label";
+            label.textContent = String(row.label ?? "—");
 
             const value = document.createElement("td");
             value.textContent =

@@ -215,10 +215,12 @@ def ask(q: Question):
     except Exception:
         answer = f"Found {len(rows)} matching result(s)."
 
+    _table, _headers = _to_label_value(rows)
     return {
         "answer": answer,
         "highlight_geoids": [r["geoid"] for r in rows if r.get("geoid")],
-        "table": _to_label_value(rows),
+        "table": _table,
+        "table_headers": _headers,
         "rows": rows,
         "sources": _sources(rows),
         "sql": executed_sql,
@@ -259,17 +261,17 @@ def _to_label_value(rows):
     }
 
     def phrase(column, v):
-        name = WORDS.get(column, column.replace("_", " ").strip())
+        """Format the number only — the column header carries the meaning."""
         if column.startswith("pct") or "percent" in column or "share" in column:
-            base = name.replace("pct ", "").replace("percent ", "").strip()
-            return f"{v:.1f}% {base}".strip()
+            return f"{v:.1f}%"
         if "income" in column:
             return f"${v:,.0f}"
         if isinstance(v, float):
-            return f"{v:,.1f} {name}"
-        return f"{v:,} {name}"
+            return f"{v:,.1f}"
+        return f"{v:,}"
 
     out = []
+    header = {"label": "Result", "value": "Value"}
     for r in rows:
         label = None
         value = None
@@ -302,7 +304,29 @@ def _to_label_value(rows):
             else:
                 label = next((str(v) for k, v in r.items() if k not in SKIP), "Result")
         out.append({"label": label, "value": value})
-    return out
+
+    # Name the columns after what the query actually returned, so the table
+    # says "Neighborhood / Foreign-born residents" instead of "Measure / Value".
+    if rows:
+        first = rows[0]
+        keys = [k for k in first if k not in SKIP]
+        text_cols = [k for k in keys if isinstance(first[k], str)]
+        num_cols = [k for k in keys
+                    if isinstance(first[k], (int, float)) and not isinstance(first[k], bool)]
+        if text_cols:
+            t = text_cols[0]
+            header["label"] = ("Neighborhood" if "tract" in t.lower()
+                               else "Business" if t == "name"
+                               else t.replace("_", " ").capitalize())
+        if num_cols:
+            c = num_cols[0]
+            header["value"] = WORDS.get(c, c.replace("_", " ")).capitalize()
+            if c.startswith("pct") or "share" in c or "percent" in c:
+                header["value"] = "Share (%)"
+        elif len(text_cols) > 1:
+            header["value"] = text_cols[1].replace("_", " ").capitalize()
+
+    return out, header
 
 
 def _sources(rows):
