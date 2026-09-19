@@ -219,3 +219,6 @@ __marimo__/
 
 # PyCharm / JetBrains project settings (personal, not shared)
 .idea/
+.env
+data/*.db
+__pycache__/
