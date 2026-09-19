@@ -309,8 +309,10 @@ function initAppPage() {
         updateHighlights();
     }
 
-    function drawBusinesses(points) {
+    function drawBusinesses(payload) {
     if (!map) return;
+
+    const points = Array.isArray(payload) ? payload : payload?.businesses;
 
     if (!Array.isArray(points)) {
         throw new Error("/businesses did not return a point array.");
