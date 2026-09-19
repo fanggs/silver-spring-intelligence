@@ -232,10 +232,12 @@ def ask(q: Question):
     # An answer with no place in it is an answer about Silver Spring as a
     # whole, so show that rather than leaving the map inert. The frontend
     # draws this scope softly instead of as a selection.
-    scope = "selection"
     if not highlights:
         highlights = list(SILVER_SPRING_GEOIDS)
-        scope = "area"
+    # Whether the model filtered to Silver Spring itself or we defaulted to
+    # it, the answer is about the area rather than a selection inside it, so
+    # the map should wash it rather than light 19 tracts up like results.
+    scope = "area" if set(highlights) == set(SILVER_SPRING_GEOIDS) else "selection"
 
     return {
         "answer": answer,
@@ -244,7 +246,7 @@ def ask(q: Question):
         "table": _table,
         "table_headers": _headers,
         "rows": rows,
-        "sources": _sources(executed_sql, rows),
+        "sources": _sources(executed_sql, highlights),
         "sql": executed_sql,
     }
 
@@ -423,7 +425,7 @@ ACS_TABLE_URL = "https://data.census.gov/table/ACSDT5Y2024.{code}?g={geo}"
 # the county we just quoted, so every link carries its geography.
 COUNTY_GEO = "050XX00US24031"            # Montgomery County, Maryland
 ALL_TRACTS_GEO = "050XX00US24031$1400000"  # every tract inside that county
-MAX_LINKED_TRACTS = 6
+MAX_LINKED_TRACTS = 20
 
 GEOMETRY_COLUMNS = ("geometry_geojson", "land_area_square_meters",
                     "centroid_latitude", "centroid_longitude")
@@ -438,14 +440,17 @@ OSM_SOURCE = (
 )
 
 
-def _census_geo(rows):
-    """Point a citation at the same geography the answer covers."""
-    geoids, seen = [], set()
-    for r in rows:
-        g = r.get("geoid")
-        if g and g not in seen:
-            seen.add(g)
-            geoids.append(str(g))
+def _census_geo(geoids):
+    """
+    Point a citation at the same geography the map is showing.
+
+    We link to the individual tracts rather than to the Silver Spring place
+    boundary even when the answer covers all of Silver Spring. The place
+    boundary is close but not identical to our 19 tracts, so its totals sit
+    a few hundred people off ours - and a citation that doesn't reconcile
+    exactly is worse than no citation.
+    """
+    geoids = [str(g) for g in dict.fromkeys(geoids or []) if g]
     if not geoids:
         return COUNTY_GEO
     if len(geoids) > MAX_LINKED_TRACTS:
@@ -453,7 +458,7 @@ def _census_geo(rows):
     return ",".join(f"1400000US{g}" for g in geoids)
 
 
-def _sources(sql: str, rows):
+def _sources(sql: str, geoids):
     """
     Cite the exact published table behind every number in the answer.
 
@@ -463,7 +468,7 @@ def _sources(sql: str, rows):
     column, so it stays the honest place to look.
     """
     text = (sql or "").lower()
-    geo = _census_geo(rows)
+    geo = _census_geo(geoids)
     out, seen = [], set()
 
     def add(label, url):
@@ -482,14 +487,10 @@ def _sources(sql: str, rows):
         add(*OSM_SOURCE)
 
     if not out:
-        # Nothing recognizable in the SQL - fall back to the link the rows carry.
-        for r in rows:
-            url = r.get("source_url")
-            if url:
-                add("U.S. Census Bureau", url)
-    if not out:
-        add(f"{ACS_VINTAGE}, Montgomery County, Maryland",
-            f"https://data.census.gov/table/ACSDT5Y2024.B01003?g={COUNTY_GEO}")
+        # Nothing recognizable in the SQL - cite the population table for
+        # whatever geography the answer covered.
+        add(f"{ACS_VINTAGE} - Table B01003, Total Population",
+            ACS_TABLE_URL.format(code="B01003", geo=geo))
     return out
 
 
