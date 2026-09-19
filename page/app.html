@@ -12,7 +12,7 @@
 <body class="app-page">
     <header class="app-header">
         <a class="brand" href="index.html" aria-label="CivicLens home">Civic<span>Lens</span><i>✦</i></a>
-        <p>COMMUNITY INTELLIGENCE / MONTGOMERY COUNTY, MD</p>
+        <p>COMMUNITY INTELLIGENCE / SILVER SPRING, MD</p>
         <a class="app-back" href="index.html">← Back to home</a>
     </header>
 
@@ -25,42 +25,23 @@
             </div>
         </div>
 
-        <div id="modeBanner" class="app-banner" role="status" aria-live="polite">Connecting to the data server…</div>
+        <div id="modeBanner" class="app-banner" role="status" aria-live="polite">Loading Silver Spring data…</div>
 
         <form id="askForm" class="app-question-form">
             <label for="questionInput">Ask CivicLens a question</label>
             <div class="app-question-row">
-                <input id="questionInput" type="text" name="question" list="questionSuggestions" maxlength="500" required
-                       placeholder="How does median income vary across Silver Spring?" autocomplete="off">
+                <input id="questionInput" type="text" name="question" maxlength="500" required
+                       placeholder="Ask Anything!" autocomplete="off">
                 <button id="askButton" type="submit">Ask <span aria-hidden="true">↗</span></button>
             </div>
-            <datalist id="questionSuggestions">
-                <option value="Who lives in this neighborhood?"></option>
-                <option value="What languages are spoken at home here?"></option>
-                <option value="Which tracts have the highest share of foreign-born residents?"></option>
-                <option value="How does median income vary across Silver Spring?"></option>
-                <option value="What businesses are in Fenton Village?"></option>
-            </datalist>
-            <p class="app-question-hint">Suggestions are optional. You can ask your own question.</p>
+            <p class="app-question-hint">Every answer comes from public data, with the source behind it.</p>
         </form>
 
         <div class="app-columns">
             <section class="app-map-panel" aria-labelledby="mapHeading">
                 <div class="app-panel-top">
                     <div><p class="section-label">01 / THE PLACE</p><h2 id="mapHeading">Explore the map</h2></div>
-                    <div class="place-jump">
-                        <label for="placeInput">Find a place</label>
-                        <div>
-                            <input id="placeInput" list="placeSuggestions" placeholder="Silver Spring" autocomplete="off">
-                            <button id="placeGo" type="button">Go</button>
-                        </div>
-                        <datalist id="placeSuggestions">
-                            <option value="Silver Spring"></option>
-                            <option value="Fenton Village"></option>
-                            <option value="Bethesda"></option>
-                            <option value="Rockville"></option>
-                        </datalist>
-                    </div>
+                    <p class="app-panel-hint">Click any area to select it.</p>
                 </div>
                 <div class="app-map-wrap">
                     <div id="map" aria-label="Map of Silver Spring, Maryland"></div>

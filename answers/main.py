@@ -525,20 +525,37 @@ OSM_SOURCE = (
 
 def _census_geo(geoids):
     """
-    Point a citation at the same geography the map is showing.
+    Point a citation at the same geography the answer covers, and say what
+    the reader will find there.
 
-    We link to the individual tracts rather than to the Silver Spring place
-    boundary even when the answer covers all of Silver Spring. The place
-    boundary is close but not identical to our 19 tracts, so its totals sit
-    a few hundred people off ours - and a citation that doesn't reconcile
-    exactly is worse than no citation.
+    This matters more than it looks. Our Silver Spring figures are the SUM of
+    19 tracts, and no Census page publishes that sum - data.census.gov shows
+    one tract at a time. Someone clicking through sees a few hundred people
+    where our answer said forty thousand and concludes we made it up. So the
+    citation states the arithmetic instead of leaving them to guess.
+
+    We link to the tracts rather than the Silver Spring place page on
+    purpose: the place boundary is close to our 19 tracts but not identical,
+    so its totals sit a few hundred off ours. A citation that nearly
+    reconciles is worse than one that explains itself.
     """
     geoids = [str(g) for g in dict.fromkeys(geoids or []) if g]
+
     if not geoids:
-        return COUNTY_GEO
+        return COUNTY_GEO, "Montgomery County, Maryland"
+
+    if set(geoids) == set(SILVER_SPRING_GEOIDS):
+        return (",".join(f"1400000US{g}" for g in geoids),
+                "summed across Silver Spring's 19 census tracts")
+
     if len(geoids) > MAX_LINKED_TRACTS:
-        return ALL_TRACTS_GEO
-    return ",".join(f"1400000US{g}" for g in geoids)
+        return ALL_TRACTS_GEO, f"summed across {len(geoids)} census tracts"
+
+    if len(geoids) == 1:
+        return f"1400000US{geoids[0]}", "this census tract"
+
+    return (",".join(f"1400000US{g}" for g in geoids),
+            f"summed across these {len(geoids)} census tracts")
 
 
 def _sources(sql: str, geoids):
@@ -551,7 +568,7 @@ def _sources(sql: str, geoids):
     column, so it stays the honest place to look.
     """
     text = (sql or "").lower()
-    geo = _census_geo(geoids)
+    geo, geo_note = _census_geo(geoids)
     out, seen = [], set()
 
     def add(label, url):
@@ -561,11 +578,14 @@ def _sources(sql: str, geoids):
 
     for column, (code, title) in ACS_TABLES.items():
         if column in text:
-            add(f"{ACS_VINTAGE} - Table {code}, {title}",
+            add(f"{ACS_VINTAGE} - Table {code}, {title} ({geo_note})",
                 ACS_TABLE_URL.format(code=code, geo=geo))
 
     if any(column in text for column in GEOMETRY_COLUMNS):
         add(*TIGER_SOURCE)
+    if "tract_history" in text:
+        add(f"ACS 5-Year Estimates 2016-2020 - earlier vintage, for measuring change ({geo_note})",
+            ACS_TABLE_URL.format(code="B01003", geo=geo).replace("ACSDT5Y2024", "ACSDT5Y2020"))
     if "businesses" in text:
         add(*OSM_SOURCE)
     if " places" in text or "places " in text:
@@ -575,7 +595,7 @@ def _sources(sql: str, geoids):
     if not out:
         # Nothing recognizable in the SQL - cite the population table for
         # whatever geography the answer covered.
-        add(f"{ACS_VINTAGE} - Table B01003, Total Population",
+        add(f"{ACS_VINTAGE} - Table B01003, Total Population ({geo_note})",
             ACS_TABLE_URL.format(code="B01003", geo=geo))
     return out
 

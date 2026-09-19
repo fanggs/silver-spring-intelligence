@@ -43,9 +43,7 @@ function initAppPage() {
         sources: element("sourceList"),
         rows: element("supportRows"),
         layerStatus: element("layerStatus"),
-        mapFallback: element("mapFallback"),
-        place: element("placeInput"),
-        placeGo: element("placeGo")
+        mapFallback: element("mapFallback")
     };
 
     let map = null;
@@ -840,7 +838,7 @@ function initAppPage() {
         setBanner(
             failures.length
                 ? `Live server reached, but some map data is unavailable: ${failures.join("; ")}`
-                : "LIVE DATA — connected to Alan's server.",
+                : "ACS 2016-2020 and 2020-2024 · Census TIGER 2024 · OpenStreetMap",
             failures.length ? "warning" : "live"
         );
 
@@ -883,47 +881,6 @@ function initAppPage() {
             );
         } finally {
             ui.askButton.disabled = false;
-        }
-    });
-
-    const placeViews = {
-        "silver spring": [[38.9907, -77.0261], 12],
-        "fenton village": [[38.99487, -77.02489], 15],
-        bethesda: [[38.9847, -77.0947], 13],
-        rockville: [[39.0839, -77.1528], 13]
-    };
-
-    ui.placeGo.addEventListener("click", () => {
-        const search = ui.place.value.trim().toLowerCase();
-
-        if (!map) {
-            ui.layerStatus.textContent = "The map is unavailable right now.";
-            return;
-        }
-
-        if (placeViews[search]) {
-            map.setView(...placeViews[search]);
-            ui.layerStatus.textContent = `Map centered on ${ui.place.value.trim()}.`;
-            return;
-        }
-
-        const tract = tractLayersByGeoid.get(ui.place.value.trim());
-
-        if (tract?.length) {
-            map.fitBounds(L.featureGroup(tract).getBounds(), { maxZoom: 15 });
-            ui.layerStatus.textContent =
-                `Map centered on tract ${ui.place.value.trim()}.`;
-            return;
-        }
-
-        ui.layerStatus.textContent =
-            "Place not found. Try Silver Spring, Fenton Village, Bethesda, Rockville, or a tract GEOID.";
-    });
-
-    ui.place.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            ui.placeGo.click();
         }
     });
 

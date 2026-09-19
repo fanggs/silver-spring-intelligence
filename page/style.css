@@ -25,19 +25,7 @@ button,input{font:inherit;}
 .hero-description{max-width:500px;margin:40px 0 32px;color:var(--muted);font-size:17px;line-height:1.7;}
 .hero-button{width:max-content;padding:16px 20px;display:flex;align-items:center;gap:65px;border-radius:100px;background:var(--ink);color:white;font-size:12px;font-weight:700;transition:transform 0.25s,background 0.25s;}
 .hero-button:hover{transform:translateY(-3px);background:var(--forest-light);}
-.hero-visual{min-height:530px;position:relative;overflow:hidden;background:radial-gradient(circle at 75% 20%,#f7cab3,transparent 32%),linear-gradient(145deg,#dce9d8,#9ebaa6);box-shadow:var(--shadow);}
-.visual-grid{position:absolute;inset:-20%;background-image:linear-gradient(rgba(255,255,255,.55) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.55) 1px,transparent 1px);background-size:52px 52px;transform:rotate(-11deg);}
-.circle{position:absolute;aspect-ratio:1;border:1px solid rgba(32,56,43,.45);border-radius:50%;}
-.circle-one{width:76%;top:8%;left:13%;}
-.circle-two{width:43%;top:29%;left:31%;}
-.point{width:15px;height:15px;position:absolute;border:3px solid white;border-radius:50%;background:var(--coral);box-shadow:0 0 0 9px rgba(255,121,95,.18);animation:pointPulse 3.2s ease-in-out infinite;}
-.point-one{left:60%;top:34%;}
-.point-two{left:31%;top:65%;animation-delay:0.8s;}
-.point-three{left:76%;top:72%;animation-delay:1.6s;}
-.location-card{position:absolute;left:42%;top:44%;padding:18px 21px;background:var(--ink);color:white;box-shadow:0 18px 40px rgba(21,32,25,.18);transition:transform 0.15s ease-out;}
-.location-card p{margin-bottom:7px;color:var(--lime);font-size:8px;font-weight:800;letter-spacing:1.4px;}
-.location-card strong{display:block;font-family:Georgia,"Times New Roman",serif;font-size:20px;font-weight:400;}
-.location-card > span{margin-top:3px;display:block;color:rgba(255,255,255,.5);font-size:10px;}
+.hero-visual{min-height:530px;position:relative;}
 @keyframes pointPulse{50%{box-shadow:0 0 0 16px rgba(255,121,95,.08);}}
 .promise-strip{min-height:72px;padding:0 5%;display:grid;grid-template-columns:repeat(3,1fr);align-items:center;background:var(--lime);border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);}
 .promise-strip p{font-size:10px;font-weight:800;letter-spacing:1.4px;transition:transform 0.2s;}
@@ -320,3 +308,67 @@ html{scroll-behavior:auto;}
 /* The business dots sit in a pane above the tracts so they are never hidden,
    but the map handles the clicks, so the canvas must not intercept them. */
 .leaflet-business-pane { pointer-events: none; }
+
+/* Replaces the old "Find a place" control in the map panel header. */
+.app-panel-hint {
+    margin: 0;
+    align-self: center;
+    font-size: 13px;
+    color: #66756c;
+}
+
+/* Hero map — real geometry, so it needs room to breathe rather than a frame. */
+.hero-visual {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hero-visual img {
+    width: 100%;
+    height: auto;
+    max-width: 640px;
+    display: block;
+}
+
+.hero-caption {
+    position: absolute;
+    left: 50%;
+    bottom: 4%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 92%;
+    text-align: center;
+    background: rgba(244, 243, 236, 0.92);
+    backdrop-filter: blur(3px);
+    border: 1px solid rgba(32, 56, 43, 0.14);
+    border-radius: 10px;
+    padding: 10px 18px;
+}
+
+.hero-caption p {
+    margin: 0 0 3px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: #8a9a8f;
+}
+
+.hero-caption strong {
+    display: block;
+    font-size: 15px;
+    color: #1d3326;
+}
+
+.hero-caption span {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    color: #66756c;
+}
+
+@media (max-width: 720px) {
+    .hero-caption { font-size: 11px; padding: 8px 12px; }
+    .hero-caption strong { font-size: 13px; }
+}

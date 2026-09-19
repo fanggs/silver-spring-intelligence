@@ -46,6 +46,44 @@ TABLE data_sources  -- provenance for each dataset
   dataset_id, dataset_name, publisher, source_url,
   geographic_coverage, data_vintage, retrieved_at, coverage_note
 
+TABLE tract_history
+  Same tracts, two points in time, so questions about CHANGE can be answered.
+  geoid                                TEXT    join to tract_data / places
+  acs_vintage                          TEXT    'ACS 2016-2020' or 'ACS 2020-2024'
+  period_start, period_end             INTEGER e.g. 2016 and 2020
+  population_count                     INTEGER
+  median_income                        INTEGER nominal dollars, NOT adjusted
+  foreign_born_count                   INTEGER
+  language_population_age_5_plus_count INTEGER
+  english_only_at_home_count           INTEGER
+  non_english_at_home_count            INTEGER
+  occupied_housing_units_count         INTEGER
+  renter_occupied_housing_units_count  INTEGER
+  total_commuter_count                 INTEGER
+  public_transit_commuter_count        INTEGER
+  source_url                           TEXT
+  464 rows: 232 tracts x 2 vintages.
+
+HOW TO ANSWER "WHAT'S CHANGING?"
+- Use tract_history, not tract_data. Aggregate each vintage separately and
+  return BOTH rows so the change is visible, e.g.
+    SELECT acs_vintage,
+           SUM(public_transit_commuter_count) AS transit_commuters,
+           SUM(total_commuter_count) AS commuters,
+           100.0 * SUM(public_transit_commuter_count)
+                 / NULLIF(SUM(total_commuter_count), 0) AS transit_pct,
+           MIN(source_url) AS source_url
+    FROM tract_history
+    WHERE geoid IN (<the tracts in scope>)
+    GROUP BY acs_vintage ORDER BY acs_vintage
+- The two windows are 2016-2020 and 2020-2024. Say the windows, not "2020"
+  and "2024" - a 5-year estimate is an average over its window.
+- median_income is in the dollars of its own period and is NOT inflation
+  adjusted, so a rise is partly prices. If you report an income change, say
+  that plainly. Never call it a real-terms gain.
+- tract_data holds only the current vintage. Never mix a tract_data figure
+  with a tract_history figure in the same comparison.
+
 TABLE places
   place_id     INTEGER  primary key
   name         TEXT     e.g. 'Woodside', 'Lyttonsville', 'Fenton Village'
