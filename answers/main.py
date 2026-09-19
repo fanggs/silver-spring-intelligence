@@ -229,26 +229,78 @@ def ask(q: Question):
 
 def _to_label_value(rows):
     """
-    Turn raw query rows into {label, value} pairs for the supporting table.
+    Turn raw query rows into readable {label, value} pairs.
 
-    The frontend shows a simple two-column table, so we pick the most
-    human-readable text column as the label and the most meaningful number
-    as the value. Raw rows are still returned separately as `rows`.
+    The frontend shows a plain two-column table, so the value has to carry
+    its own meaning — "4,098" tells you nothing, "4,098 foreign-born
+    residents" tells you everything. Raw rows are returned separately
+    as `rows` for anything that needs the unformatted numbers.
     """
-    SKIP = {"geoid", "source_url", "state_fips", "county_fips", "tract_code"}
+    # Coordinates are how the map works, not something a reader wants to see.
+    SKIP = {"geoid", "source_url", "state_fips", "county_fips", "tract_code",
+            "latitude", "longitude", "centroid_latitude", "centroid_longitude",
+            "business_id"}
+
+    # column name -> (how to say it, how to format it)
+    WORDS = {
+        "population_count":                    "residents",
+        "foreign_born_count":                  "foreign-born residents",
+        "median_income":                       "median household income",
+        "english_only_at_home_count":          "speak only English at home",
+        "non_english_at_home_count":           "speak another language at home",
+        "age_18_34_count":                     "residents aged 18-34",
+        "occupied_housing_units_count":        "occupied homes",
+        "renter_occupied_housing_units_count": "rented homes",
+        "public_transit_commuter_count":       "commute by public transit",
+        "total_commuter_count":                "commuters",
+        "land_area_square_meters":             "sq. meters of land",
+        "business_count":                      "businesses",
+        "count":                               "businesses",
+    }
+
+    def phrase(column, v):
+        name = WORDS.get(column, column.replace("_", " ").strip())
+        if column.startswith("pct") or "percent" in column or "share" in column:
+            base = name.replace("pct ", "").replace("percent ", "").strip()
+            return f"{v:.1f}% {base}".strip()
+        if "income" in column:
+            return f"${v:,.0f}"
+        if isinstance(v, float):
+            return f"{v:,.1f} {name}"
+        return f"{v:,} {name}"
+
     out = []
     for r in rows:
         label = None
         value = None
+        spare_text = None
         for k, v in r.items():
             if k in SKIP:
                 continue
-            if label is None and isinstance(v, str):
-                label = v.split(";")[0].strip()      # "Census Tract 7016.02"
-            elif value is None and isinstance(v, (int, float)):
-                value = round(v, 1) if isinstance(v, float) else v
+            if isinstance(v, str):
+                if label is None:
+                    label = v.split(";")[0].strip()      # "Census Tract 7016.02"
+                elif spare_text is None:
+                    spare_text = v                       # e.g. a business category
+            elif value is None and isinstance(v, (int, float)) and not isinstance(v, bool):
+                value = phrase(k, v)
+        # A business row has no meaningful number — its category is the value.
+        if value is None and spare_text:
+            value = spare_text
         if label is None:
-            label = next((str(v) for k, v in r.items() if k not in SKIP), "Result")
+            # Aggregate rows (MIN/MAX/AVG) have no text column — name the
+            # measure itself instead of showing a bare number as the label.
+            numeric = [k for k, v in r.items()
+                       if k not in SKIP and isinstance(v, (int, float))
+                       and not isinstance(v, bool)]
+            if numeric:
+                col = numeric[0]
+                label = (col.replace("_", " ")
+                            .replace("min ", "lowest ").replace("max ", "highest ")
+                            .replace("avg ", "average ").replace("pct ", "% ")
+                            .strip().capitalize())
+            else:
+                label = next((str(v) for k, v in r.items() if k not in SKIP), "Result")
         out.append({"label": label, "value": value})
     return out
 
