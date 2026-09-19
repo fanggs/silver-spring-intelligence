@@ -11,6 +11,7 @@ invents a figure, which is what makes every answer traceable to a source.
 from __future__ import annotations
 
 import json
+import re
 import os
 import sqlite3
 from pathlib import Path
@@ -220,7 +221,7 @@ def ask(q: Question):
     # geoid, so fall back to any place named in the question itself.
     highlights = [r["geoid"] for r in rows if r.get("geoid")]
     if not highlights:
-        highlights = _place_geoids(question)
+        highlights = _sql_geoids(executed_sql) or _place_geoids(question)
 
     return {
         "answer": answer,
@@ -338,6 +339,22 @@ def _to_label_value(rows):
 PLACES = {
     "fenton village": ["24031702502", "24031702503", "24031702501", "24031702402"],
 }
+
+
+def _sql_geoids(sql: str):
+    """
+    Pull the tracts the query itself filtered on.
+
+    An aggregate like COUNT(*) GROUP BY category returns no geoid column, so
+    the rows can't tell us what to light up - but the WHERE clause can. This
+    works for any place the model can resolve, not just the ones we listed.
+    """
+    seen, out = set(), []
+    for g in re.findall(r"\b(24031\d{6})\b", sql or ""):
+        if g not in seen:
+            seen.add(g)
+            out.append(g)
+    return out
 
 
 def _place_geoids(question: str):
