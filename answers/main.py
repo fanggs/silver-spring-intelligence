@@ -228,7 +228,7 @@ def ask(q: Question):
         "table": _table,
         "table_headers": _headers,
         "rows": rows,
-        "sources": _sources(rows),
+        "sources": _sources(executed_sql, rows),
         "sql": executed_sql,
     }
 
@@ -349,19 +349,74 @@ def _place_geoids(question: str):
     return []
 
 
-def _sources(rows):
-    """Collect the citation links carried on the rows themselves."""
-    seen, out = set(), []
-    for r in rows:
-        url = r.get("source_url")
-        if url and url not in seen:
+# Every stored column traces back to one specific published table. Naming the
+# exact table is the difference between "we cite the Census" and evidence a
+# judge can open and re-derive themselves.
+ACS_TABLES = {
+    "population_count": ("B01003", "Total Population"),
+    "age_18_34_count": ("B01001", "Sex by Age"),
+    "foreign_born_count": ("B05001", "Nativity and Citizenship Status"),
+    "median_income": ("B19013", "Median Household Income (past 12 months)"),
+    "language_population_age_5_plus_count": ("C16001", "Language Spoken at Home"),
+    "english_only_at_home_count": ("C16001", "Language Spoken at Home"),
+    "non_english_at_home_count": ("C16001", "Language Spoken at Home"),
+    "occupied_housing_units_count": ("B25003", "Tenure (owner vs. renter)"),
+    "renter_occupied_housing_units_count": ("B25003", "Tenure (owner vs. renter)"),
+    "total_commuter_count": ("B08301", "Means of Transportation to Work"),
+    "public_transit_commuter_count": ("B08301", "Means of Transportation to Work"),
+}
+
+ACS_VINTAGE = "ACS 5-Year Estimates 2020-2024"
+ACS_TABLE_URL = "https://data.census.gov/table/ACSDT5Y2024.{code}"
+
+GEOMETRY_COLUMNS = ("geometry_geojson", "land_area_square_meters",
+                    "centroid_latitude", "centroid_longitude")
+
+TIGER_SOURCE = (
+    "Census TIGER/Line 2024, Montgomery County tract boundaries",
+    "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_24_tract_500k.zip",
+)
+OSM_SOURCE = (
+    "OpenStreetMap business locations, retrieved via the Overpass API",
+    "https://www.openstreetmap.org/copyright",
+)
+
+
+def _sources(sql: str, rows):
+    """
+    Cite the exact published table behind every number in the answer.
+
+    We read the column names out of the SQL we actually ran, not out of the
+    result keys, because the model routinely renames them on the way out
+    (SUM(median_income) AS avg_income). The SQL text still carries the real
+    column, so it stays the honest place to look.
+    """
+    text = (sql or "").lower()
+    out, seen = [], set()
+
+    def add(label, url):
+        if url not in seen:
             seen.add(url)
-            out.append({"label": "U.S. Census Bureau / OpenStreetMap", "url": url})
+            out.append({"label": label, "url": url})
+
+    for column, (code, title) in ACS_TABLES.items():
+        if column in text:
+            add(f"{ACS_VINTAGE} - Table {code}, {title}",
+                ACS_TABLE_URL.format(code=code))
+
+    if any(column in text for column in GEOMETRY_COLUMNS):
+        add(*TIGER_SOURCE)
+    if "businesses" in text:
+        add(*OSM_SOURCE)
+
     if not out:
-        out.append({
-            "label": "ACS 5-Year Estimates 2024, U.S. Census Bureau",
-            "url": "https://data.census.gov/",
-        })
+        # Nothing recognizable in the SQL - fall back to the link the rows carry.
+        for r in rows:
+            url = r.get("source_url")
+            if url:
+                add("U.S. Census Bureau", url)
+    if not out:
+        add(f"{ACS_VINTAGE}, U.S. Census Bureau", "https://data.census.gov/")
     return out
 
 
