@@ -2,7 +2,7 @@
 
 /* Change only this address when Alan gives you the deployed URL. No API keys go here. */
 const API_BASE_URL = "https://silver-spring-intelligence.onrender.com";
-const SCOPE_MESSAGE = "I can't answer that from the data I have. I can tell you about population, languages spoken at home, household income, and foreign-born residents for any census tract in Montgomery County, Maryland — plus local business locations.";
+const SCOPE_MESSAGE = "I can't answer that from the data I have. I can tell you about population, languages spoken at home, household income, foreign-born residents, housing and commuting for Silver Spring, Maryland — plus its local businesses and the Fenton Village district — and compare Silver Spring with the rest of Montgomery County.";
 
 function initLandingPage() {
     const heroVisual = document.getElementById("heroVisual");
@@ -53,6 +53,8 @@ function initAppPage() {
     let businessLayer = null;
     const tractLayersByGeoid = new Map();
     let activeGeoids = new Set();
+    let boundaryLayer = null;
+    let highlightScope = "selection";
     let demoMode = false;
 
     // These objects use Alan's final API field names. All demo content is synthetic.
@@ -162,6 +164,10 @@ function initAppPage() {
         const sources = Array.isArray(payload?.sources) ? payload.sources : [];
 
         activeGeoids = new Set(highlights.map(String));
+        // "area" means the answer is about Silver Spring as a whole, not a
+        // selection inside it, so the map shades it softly instead of
+        // lighting 19 tracts up as if they were a result.
+        highlightScope = payload?.highlight_scope === "area" ? "area" : "selection";
         updateHighlights();
 
         if (!answer) {
@@ -253,29 +259,60 @@ function initAppPage() {
             layers.forEach((layer) => {
                 layer.setStyle(
                     selected
-                        ? {
-                            color: "#b9422a",
-                            weight: 3,
-                            fillColor: "#ff795f",
-                            fillOpacity: 0.68
-                        }
+                        ? (highlightScope === "area"
+                            ? {
+                                color: "#c98a5e",
+                                weight: 1,
+                                fillColor: "#f3b98f",
+                                fillOpacity: 0.38
+                            }
+                            : {
+                                color: "#b9422a",
+                                weight: 3,
+                                fillColor: "#ff795f",
+                                fillOpacity: 0.68
+                            })
                         : baseTractStyle()
                 );
 
                 if (selected) {
-                    layer.bringToFront();
+                    if (highlightScope !== "area") layer.bringToFront();
                     selectedLayers.push(layer);
                 }
             });
         });
 
-        if (selectedLayers.length) {
+        if (selectedLayers.length && highlightScope !== "area") {
             const bounds = L.featureGroup(selectedLayers).getBounds();
             if (bounds.isValid()) {
                 map.fitBounds(bounds.pad(0.25), { maxZoom: 13 });
             }
+        } else if (highlightScope === "area" && boundaryLayer) {
+            const bounds = boundaryLayer.getBounds();
+            if (bounds.isValid()) map.fitBounds(bounds.pad(0.08));
         }
     }
+
+    function drawBoundary(geojson) {
+        if (!map || geojson?.type !== "FeatureCollection") return;
+
+        if (boundaryLayer) map.removeLayer(boundaryLayer);
+
+        boundaryLayer = L.geoJSON(geojson, {
+            interactive: false,
+            style: {
+                color: "#1d3326",
+                weight: 3,
+                opacity: 0.9,
+                dashArray: "6 4",
+                fill: false
+            }
+        }).addTo(map);
+
+        const bounds = boundaryLayer.getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds.pad(0.08));
+    }
+
 
     function drawTracts(geojson) {
         if (!map) return;
@@ -414,9 +451,10 @@ function initAppPage() {
     }
 
     async function loadLayers() {
-        const [tracts, businesses] = await Promise.allSettled([
+        const [tracts, businesses, boundary] = await Promise.allSettled([
             requestJson("/tracts"),
-            requestJson("/businesses")
+            requestJson("/businesses"),
+            requestJson("/boundary")
         ]);
 
         const bothNetworkFailures =
@@ -452,6 +490,16 @@ function initAppPage() {
             }
         } else {
             failures.push(businesses.reason.message);
+        }
+
+        // Drawn last so the Silver Spring outline sits above the tract fill,
+        // and so it wins the final fitBounds.
+        if (boundary.status === "fulfilled") {
+            try {
+                drawBoundary(boundary.value);
+            } catch (error) {
+                failures.push(error.message);
+            }
         }
 
         setBanner(

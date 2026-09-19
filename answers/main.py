@@ -88,6 +88,7 @@ def index():
         "endpoints": {
             "GET  /health": "service + database status",
             "GET  /tracts": "all 232 census tract boundaries as GeoJSON",
+            "GET  /boundary": "the Silver Spring CDP outline as GeoJSON",
             "GET  /businesses": "business locations with category and coordinates",
             "POST /ask": "ask a question in plain English -> answer, sources, and the SQL we ran",
             "GET  /docs": "interactive API explorer",
@@ -147,6 +148,12 @@ def tracts():
             },
         })
     return {"type": "FeatureCollection", "features": features}
+
+
+@app.get("/boundary")
+def boundary():
+    """The Silver Spring outline, so the map can show what 'here' means."""
+    return json.loads(BOUNDARY_PATH.read_text())
 
 
 @app.get("/businesses")
@@ -222,10 +229,18 @@ def ask(q: Question):
     highlights = [r["geoid"] for r in rows if r.get("geoid")]
     if not highlights:
         highlights = _sql_geoids(executed_sql) or _place_geoids(question)
+    # An answer with no place in it is an answer about Silver Spring as a
+    # whole, so show that rather than leaving the map inert. The frontend
+    # draws this scope softly instead of as a selection.
+    scope = "selection"
+    if not highlights:
+        highlights = list(SILVER_SPRING_GEOIDS)
+        scope = "area"
 
     return {
         "answer": answer,
         "highlight_geoids": highlights,
+        "highlight_scope": scope,
         "table": _table,
         "table_headers": _headers,
         "rows": rows,
@@ -339,6 +354,23 @@ def _to_label_value(rows):
 PLACES = {
     "fenton village": ["24031702502", "24031702503", "24031702501", "24031702402"],
 }
+
+# Silver Spring is the place this product is about. The database covers the
+# whole county so we can say "compared to the county" with real numbers, but
+# unless a question points somewhere else, "here" means Silver Spring.
+#
+# These 19 tracts are the ones whose centroid falls inside the Census
+# Designated Place boundary for Silver Spring (GEOID 2472450). They hold
+# 81,727 people, which matches the Bureau's published CDP population.
+SILVER_SPRING_GEOIDS = [
+    "24031701601", "24031701602", "24031701900", "24031702000",
+    "24031702101", "24031702200", "24031702301", "24031702302",
+    "24031702401", "24031702402", "24031702501", "24031702502",
+    "24031702503", "24031702602", "24031702603", "24031702604",
+    "24031702700", "24031702800", "24031702900",
+]
+
+BOUNDARY_PATH = PROJECT_ROOT / "data" / "silver_spring_boundary.geojson"
 
 
 def _sql_geoids(sql: str):
@@ -465,6 +497,7 @@ def _cannot(message: str | None = None, sql: str | None = None):
     return {
         "answer": message or "I can't answer that from the data I have.",
         "highlight_geoids": [],
+        "highlight_scope": "none",
         "table": [],
         "sources": [],
         "sql": sql,

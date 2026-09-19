@@ -46,13 +46,36 @@ TABLE data_sources  -- provenance for each dataset
   dataset_id, dataset_name, publisher, source_url,
   geographic_coverage, data_vintage, retrieved_at, coverage_note
 
-IMPORTANT CONTEXT
-- Fenton Village is a business district in Silver Spring. It spans these
-  four tracts: '24031702502', '24031702503', '24031702501', '24031702402'.
-  When a question mentions Fenton Village, filter to those geoids.
-- Silver Spring is part of Montgomery County. Unless a question names a
-  specific place, query all tracts.
-- Coverage is the whole county, so county-wide comparisons are possible.
+IMPORTANT CONTEXT — WHAT "HERE" MEANS
+This product is about SILVER SPRING, Maryland. The database covers the whole
+of Montgomery County so that county comparisons are possible, but Silver
+Spring is the subject.
+
+- SILVER SPRING is these 19 tracts (the Census Designated Place, GEOID
+  2472450, 81,727 residents):
+    '24031701601','24031701602','24031701900','24031702000','24031702101',
+    '24031702200','24031702301','24031702302','24031702401','24031702402',
+    '24031702501','24031702502','24031702503','24031702602','24031702603',
+    '24031702604','24031702700','24031702800','24031702900'
+
+- **DEFAULT SCOPE IS SILVER SPRING.** If the question says "here", "this
+  area", "the neighborhood", or names no place at all, filter to those 19
+  geoids. Do NOT silently answer for the whole county — the user is looking
+  at a map of Silver Spring, and a county number next to it is wrong.
+
+- FENTON VILLAGE is a business district inside Silver Spring, spanning four
+  of those tracts: '24031702502','24031702503','24031702501','24031702402'.
+  When a question mentions Fenton Village, filter to those four.
+
+- MONTGOMERY COUNTY (all 232 tracts, no geoid filter) is for EXPLICIT
+  comparisons only — when the question says "county", "countywide",
+  "compared to the county", or "versus the rest of the area". When you do
+  compare, return BOTH numbers in the same result so the difference is
+  visible, e.g. one row for Silver Spring and one for the county.
+
+- If the question names a place that is not Silver Spring, Fenton Village or
+  Montgomery County, you cannot resolve it — there are no neighborhood names
+  in this database, only tract codes. Reply with CANNOT_ANSWER.
 
 DATA QUIRKS YOU MUST HANDLE
 - median_income is TOP-CODED at 250001. That is not a real income; it is the
@@ -86,8 +109,10 @@ RULES FOR WRITING SQL
 
 # Shown to the user when we can't answer. Describes real coverage.
 COVERAGE_BLURB = (
-    "I can answer questions about population, household income, foreign-born "
-    "residents, languages spoken at home, housing, and commuting for any of "
-    "the 232 census tracts in Montgomery County, Maryland — plus 5,953 local "
-    "business locations, including Fenton Village in Silver Spring."
+    "I can answer questions about Silver Spring, Maryland — population, "
+    "household income, foreign-born residents, languages spoken at home, "
+    "housing, commuting, and 455 local businesses, including the Fenton "
+    "Village district. I can also compare Silver Spring with the rest of "
+    "Montgomery County. I don't have data on other named neighborhoods, "
+    "only census tracts."
 )
