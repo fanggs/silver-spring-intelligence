@@ -55,6 +55,8 @@ function initAppPage() {
     let activeGeoids = new Set();
     let boundaryLayer = null;
     let legendControl = null;
+    let businessPoints = [];
+    const placeNamesByGeoid = new Map();
     let highlightScope = "selection";
     let demoMode = false;
 
@@ -170,6 +172,7 @@ function initAppPage() {
         // lighting 19 tracts up as if they were a result.
         highlightScope = payload?.highlight_scope === "area" ? "area" : "selection";
         updateHighlights();
+        refreshLegendForSelection();
 
         if (!answer) {
             showMessage(SCOPE_MESSAGE, true);
@@ -350,18 +353,48 @@ function initAppPage() {
                 layers.push(layer);
                 tractLayersByGeoid.set(id, layers);
 
+                const props = feature.properties || {};
+                const placeNames = Array.isArray(props.place_names) ? props.place_names : [];
+                placeNamesByGeoid.set(id, placeNames);
+                // "Census Tract 7025.01" means nothing to someone standing in
+                // it. Lead with what the place is called and keep the tract as
+                // the reference, which is what the figures are published for.
+                const tractLabel = String(props.tract_name || "Census tract").split(";")[0].trim();
+
                 const popup = document.createElement("div");
+
                 const title = document.createElement("strong");
-                title.textContent = String(
-                    feature.properties?.name ||
-                    feature.properties?.tract_name ||
-                    "Census tract"
-                );
+                title.textContent = placeNames.length
+                    ? placeNames.slice(0, 3).join(" · ")
+                    : tractLabel;
+                popup.append(title);
+
+                if (placeNames.length > 3) {
+                    const more = document.createElement("div");
+                    more.className = "popup-group";
+                    more.textContent = `and ${placeNames.length - 3} more`;
+                    popup.append(more);
+                }
+
+                const facts = document.createElement("div");
+                facts.className = "popup-facts";
+                const bits = [];
+                if (Number.isFinite(Number(props.population_count))) {
+                    bits.push(`${Number(props.population_count).toLocaleString()} residents`);
+                }
+                // 250001 is the Census ceiling, not an income. Never show it.
+                const income = Number(props.median_income);
+                if (Number.isFinite(income) && income > 0 && income < 250001) {
+                    bits.push(`median income $${income.toLocaleString()}`);
+                }
+                facts.textContent = bits.join(" · ");
+                if (bits.length) popup.append(facts);
 
                 const code = document.createElement("div");
-                code.textContent = `GEOID: ${id}`;
+                code.className = "popup-group";
+                code.textContent = placeNames.length ? tractLabel : `GEOID ${id}`;
+                popup.append(code);
 
-                popup.append(title, code);
                 layer.bindPopup(popup);
             }
         }).addTo(map);
@@ -411,7 +444,23 @@ function initAppPage() {
         return BUSINESS_GROUPS.find((g) => g.test.test(text)) || OTHER_GROUP;
     }
 
-    function drawBusinessLegend(counts, total) {
+    function refreshLegendForSelection() {
+        if (!businessPoints.length) return;
+
+        // An answer about one district should not sit next to a legend
+        // counting the whole town, so the counts follow the highlight.
+        const scoped = highlightScope === "selection" && activeGeoids.size;
+        const points = scoped
+            ? businessPoints.filter((p) => activeGeoids.has(p.geoid))
+            : businessPoints;
+
+        const counts = {};
+        points.forEach((p) => { counts[p.key] = (counts[p.key] || 0) + 1; });
+        drawBusinessLegend(counts, points.length, scoped);
+    }
+
+
+    function drawBusinessLegend(counts, total, scoped) {
         if (!map) return;
         if (legendControl) map.removeControl(legendControl);
 
@@ -420,7 +469,7 @@ function initAppPage() {
             const box = L.DomUtil.create("div", "map-legend");
 
             const title = L.DomUtil.create("h4", "", box);
-            title.textContent = "Businesses";
+            title.textContent = scoped ? "Businesses here" : "Businesses";
 
             [...BUSINESS_GROUPS, OTHER_GROUP].forEach((g) => {
                 const n = counts[g.key] || 0;
@@ -437,10 +486,17 @@ function initAppPage() {
                 count.textContent = String(n);
             });
 
+            if (!total) {
+                const empty = L.DomUtil.create("div", "map-legend-label", box);
+                empty.textContent = "None recorded here";
+            }
+
             const note = L.DomUtil.create("p", "map-legend-note", box);
             // Says "recorded in" on purpose: this is OpenStreetMap's coverage,
             // not a claim about every business that exists.
-            note.textContent = `${total} recorded in OpenStreetMap`;
+            note.textContent = scoped
+                ? `${total} of ${businessPoints.length} recorded in OpenStreetMap`
+                : `${total} recorded in OpenStreetMap`;
 
             L.DomEvent.disableClickPropagation(box);
             return box;
@@ -463,6 +519,7 @@ function initAppPage() {
         const canvas = L.canvas();
         const counts = {};
         let drawn = 0;
+        businessPoints = [];
 
         points.forEach((point) => {
             const latitude = Number(point?.latitude);
@@ -487,15 +544,24 @@ function initAppPage() {
             title.textContent = String(point.name || "Business");
 
             const category = document.createElement("div");
-            category.textContent = String(point.category || "Category unavailable");
+            category.className = "popup-facts";
+            const raw = String(point.category || "").trim();
+            const pretty = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "Category not recorded";
+            category.textContent = `${pretty} · ${group.label}`;
 
-            const kind = document.createElement("div");
-            kind.className = "popup-group";
-            kind.textContent = group.label;
+            // Say where it is in words. The tract code is the reference the
+            // figures are published under, not something to lead with.
+            const where = document.createElement("div");
+            where.className = "popup-group";
+            const names = placeNamesByGeoid.get(String(point?.geoid ?? "")) || [];
+            where.textContent = names.length
+                ? `in ${names.slice(0, 2).join(" · ")}`
+                : "Silver Spring, Maryland";
 
-            popup.append(title, category, kind);
+            popup.append(title, category, where);
             pin.bindPopup(popup);
             pin.addTo(businessLayer);
+            businessPoints.push({ geoid: String(point?.geoid ?? ""), key: group.key });
             drawn += 1;
         });
 

@@ -156,6 +156,15 @@ def tracts(scope: str = "silver-spring"):
            FROM tract_data WHERE geometry_geojson IS NOT NULL""" + clause,
         args,
     ).fetchall()
+    # "Census Tract 7025.01" means nothing to a person standing in it, so send
+    # the names it is actually known by. Districts first - they are the names
+    # on the signage - then the neighbourhoods.
+    names = {}
+    for r in conn.execute(
+        """SELECT geoid, name FROM places
+           ORDER BY CASE WHEN kind = 'district' THEN 0 ELSE 1 END, name"""
+    ):
+        names.setdefault(r["geoid"], []).append(r["name"])
     conn.close()
 
     features = []
@@ -170,6 +179,7 @@ def tracts(scope: str = "silver-spring"):
             "properties": {
                 "geoid": r["geoid"],
                 "tract_name": r["tract_name"],
+                "place_names": names.get(r["geoid"], []),
                 "population_count": r["population_count"],
                 "median_income": r["median_income"],
                 "foreign_born_count": r["foreign_born_count"],

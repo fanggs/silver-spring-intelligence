@@ -309,3 +309,10 @@ html{scroll-behavior:auto;}
     vertical-align: middle;
     margin-right: 4px;
 }
+
+/* Popup facts line — the numbers under a place name. */
+.popup-facts {
+    margin-top: 3px;
+    font-size: 12px;
+    color: #2d3b33;
+}
