@@ -11,3 +11,13 @@ Planned scripts:
 - `validate_database.py`: verifies the database before a commit.
 
 The output database is not committed. The scripts, schema, and source metadata are.
+
+## Run
+
+Create a project-root `.env` with `CENSUS_API_KEY=...`, install `requests pyshp`, then run:
+
+`python -m get_data.build_database`
+
+Validate with:
+
+`python -m get_data.validate_database`
