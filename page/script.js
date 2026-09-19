@@ -1,7 +1,7 @@
 "use strict";
 
 /* Change only this address when Alan gives you the deployed URL. No API keys go here. */
-const API_BASE_URL = "https://silver-spring-intelligence.onrender.com/";
+const API_BASE_URL = "https://silver-spring-intelligence.onrender.com";
 const SCOPE_MESSAGE = "I can't answer that from the data I have. I can tell you about population, languages spoken at home, household income, and foreign-born residents for any census tract in Montgomery County, Maryland — plus local business locations.";
 
 function initLandingPage() {
