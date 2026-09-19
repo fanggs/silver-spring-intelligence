@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from .database import connect, initialize_database
-from .fetch_census import ACS_URL, fetch_census_tracts
+from .fetch_census import TRACT_SOURCE_URL, fetch_census_tracts
 from .fetch_geometry import URL as GEOMETRY_URL, fetch_tract_geometry
 from .fetch_businesses import fetch_businesses
 
@@ -67,10 +67,10 @@ def main():
         for tract in census:
             shape = geometry.get(tract["geoid"])
             if not shape: continue
-            tract.update(shape); tract.update({"acs_vintage":"2024 ACS 5-year", "source_url":ACS_URL, "retrieved_at":now})
+            tract.update(shape); tract.update({"acs_vintage":"2024 ACS 5-year", "source_url":TRACT_SOURCE_URL, "retrieved_at":now})
             columns = list(tract); db.execute(f"INSERT INTO tract_data ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", [tract[column] for column in columns])
         for business in businesses:
             columns = list(business); db.execute(f"INSERT OR REPLACE INTO businesses ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", [business[column] for column in columns])
-        db.executemany("INSERT INTO data_sources VALUES (?,?,?,?,?,?,?,?)", [("acs_2024","ACS 2024 5-year","U.S. Census Bureau",ACS_URL,"All Montgomery County census tracts","2024",now,"Tract-level demographic estimates"),("tract_geometry_2024","Census tract boundaries","U.S. Census Bureau",GEOMETRY_URL,"All Montgomery County census tracts","2024",now,"Generalized Census tract geometry"),("osm_businesses","Business locations","OpenStreetMap", "https://www.openstreetmap.org","Businesses inside Montgomery County census tracts",now[:10],now,"Coverage depends on OpenStreetMap contributions")])
+        db.executemany("INSERT INTO data_sources VALUES (?,?,?,?,?,?,?,?)", [("acs_2024","ACS 2024 5-year","U.S. Census Bureau",TRACT_SOURCE_URL,"All Montgomery County census tracts","2024",now,"Tract-level demographic estimates, including the C16001 tract-level language table"),("tract_geometry_2024","Census tract boundaries","U.S. Census Bureau",GEOMETRY_URL,"All Montgomery County census tracts","2024",now,"Generalized Census tract geometry"),("osm_businesses","Business locations","OpenStreetMap", "https://www.openstreetmap.org","Businesses inside Montgomery County census tracts",now[:10],now,"Coverage depends on OpenStreetMap contributions")])
     print(f"Saved {len(census)} ACS records, {len(geometry)} tract polygons, and {len(businesses)} business points.")
 if __name__ == "__main__": main()

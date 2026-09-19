@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS tract_data (
     age_18_34_count INTEGER,
     foreign_born_count INTEGER,
     median_income INTEGER,
+    language_population_age_5_plus_count INTEGER,
     english_only_at_home_count INTEGER,
     non_english_at_home_count INTEGER,
     occupied_housing_units_count INTEGER,
@@ -66,3 +67,10 @@ def connect() -> sqlite3.Connection:
 def initialize_database() -> None:
     with connect() as connection:
         connection.executescript(SCHEMA)
+        existing_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(tract_data)")
+        }
+        if "language_population_age_5_plus_count" not in existing_columns:
+            connection.execute(
+                "ALTER TABLE tract_data ADD COLUMN language_population_age_5_plus_count INTEGER"
+            )
