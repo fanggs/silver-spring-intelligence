@@ -367,7 +367,14 @@ ACS_TABLES = {
 }
 
 ACS_VINTAGE = "ACS 5-Year Estimates 2020-2024"
-ACS_TABLE_URL = "https://data.census.gov/table/ACSDT5Y2024.{code}"
+ACS_TABLE_URL = "https://data.census.gov/table/ACSDT5Y2024.{code}?g={geo}"
+
+# data.census.gov defaults to the whole United States. Without an explicit
+# geography a judge clicking our citation sees 316 million people instead of
+# the county we just quoted, so every link carries its geography.
+COUNTY_GEO = "050XX00US24031"            # Montgomery County, Maryland
+ALL_TRACTS_GEO = "050XX00US24031$1400000"  # every tract inside that county
+MAX_LINKED_TRACTS = 6
 
 GEOMETRY_COLUMNS = ("geometry_geojson", "land_area_square_meters",
                     "centroid_latitude", "centroid_longitude")
@@ -382,6 +389,21 @@ OSM_SOURCE = (
 )
 
 
+def _census_geo(rows):
+    """Point a citation at the same geography the answer covers."""
+    geoids, seen = [], set()
+    for r in rows:
+        g = r.get("geoid")
+        if g and g not in seen:
+            seen.add(g)
+            geoids.append(str(g))
+    if not geoids:
+        return COUNTY_GEO
+    if len(geoids) > MAX_LINKED_TRACTS:
+        return ALL_TRACTS_GEO
+    return ",".join(f"1400000US{g}" for g in geoids)
+
+
 def _sources(sql: str, rows):
     """
     Cite the exact published table behind every number in the answer.
@@ -392,6 +414,7 @@ def _sources(sql: str, rows):
     column, so it stays the honest place to look.
     """
     text = (sql or "").lower()
+    geo = _census_geo(rows)
     out, seen = [], set()
 
     def add(label, url):
@@ -402,7 +425,7 @@ def _sources(sql: str, rows):
     for column, (code, title) in ACS_TABLES.items():
         if column in text:
             add(f"{ACS_VINTAGE} - Table {code}, {title}",
-                ACS_TABLE_URL.format(code=code))
+                ACS_TABLE_URL.format(code=code, geo=geo))
 
     if any(column in text for column in GEOMETRY_COLUMNS):
         add(*TIGER_SOURCE)
@@ -416,7 +439,8 @@ def _sources(sql: str, rows):
             if url:
                 add("U.S. Census Bureau", url)
     if not out:
-        add(f"{ACS_VINTAGE}, U.S. Census Bureau", "https://data.census.gov/")
+        add(f"{ACS_VINTAGE}, Montgomery County, Maryland",
+            f"https://data.census.gov/table/ACSDT5Y2024.B01003?g={COUNTY_GEO}")
     return out
 
 
