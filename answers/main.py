@@ -209,13 +209,40 @@ def ask(q: Question):
     return {
         "answer": answer,
         "highlight_geoids": [r["geoid"] for r in rows if r.get("geoid")],
-        "table": rows,
+        "table": _to_label_value(rows),
+        "rows": rows,
         "sources": _sources(rows),
         "sql": executed_sql,
     }
 
 
 # ---------------------------------------------------------------- helpers
+
+def _to_label_value(rows):
+    """
+    Turn raw query rows into {label, value} pairs for the supporting table.
+
+    The frontend shows a simple two-column table, so we pick the most
+    human-readable text column as the label and the most meaningful number
+    as the value. Raw rows are still returned separately as `rows`.
+    """
+    SKIP = {"geoid", "source_url", "state_fips", "county_fips", "tract_code"}
+    out = []
+    for r in rows:
+        label = None
+        value = None
+        for k, v in r.items():
+            if k in SKIP:
+                continue
+            if label is None and isinstance(v, str):
+                label = v.split(";")[0].strip()      # "Census Tract 7016.02"
+            elif value is None and isinstance(v, (int, float)):
+                value = round(v, 1) if isinstance(v, float) else v
+        if label is None:
+            label = next((str(v) for k, v in r.items() if k not in SKIP), "Result")
+        out.append({"label": label, "value": value})
+    return out
+
 
 def _sources(rows):
     """Collect the citation links carried on the rows themselves."""
