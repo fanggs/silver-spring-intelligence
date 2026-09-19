@@ -5,10 +5,12 @@ import requests
 from .config import CENSUS_API_KEY
 
 ACS_URL = "https://api.census.gov/data/2024/acs/acs5"
-FIELDS = ["NAME", "B01003_001E", "B05001_006E", "B19013_001E", "B16001_002E", "B16001_003E",
+TRACT_SOURCE_URL = "https://data.census.gov/table/ACSDT5Y2024.B01003"
+FIELDS = ["NAME", "B01003_001E", "B05001_005E", "B05001_006E", "B19013_001E", "C16001_001E", "C16001_002E",
           "B25003_001E", "B25003_003E", "B08301_001E", "B08301_010E",
           "B01001_007E", "B01001_008E", "B01001_009E", "B01001_010E", "B01001_011E", "B01001_012E",
           "B01001_031E", "B01001_032E", "B01001_033E", "B01001_034E", "B01001_035E", "B01001_036E"]
+AGE_18_34_FIELDS = FIELDS[11:]
 
 def number(value):
     try: return int(value)
@@ -30,6 +32,10 @@ def fetch_census_tracts():
     header, *rows = payload
     result = []
     for raw in map(lambda row: dict(zip(header, row)), rows):
-        age_18_34 = sum(number(raw[field]) or 0 for field in FIELDS[10:])
-        result.append({"geoid": f"{raw['state']}{raw['county']}{raw['tract']}", "tract_name": raw["NAME"], "state_fips": raw["state"], "county_fips": raw["county"], "tract_code": raw["tract"], "population_count": number(raw["B01003_001E"]), "age_18_34_count": age_18_34, "foreign_born_count": number(raw["B05001_006E"]), "median_income": number(raw["B19013_001E"]), "english_only_at_home_count": number(raw["B16001_002E"]), "non_english_at_home_count": number(raw["B16001_003E"]), "occupied_housing_units_count": number(raw["B25003_001E"]), "renter_occupied_housing_units_count": number(raw["B25003_003E"]), "total_commuter_count": number(raw["B08301_001E"]), "public_transit_commuter_count": number(raw["B08301_010E"])})
+        age_18_34 = sum(number(raw[field]) or 0 for field in AGE_18_34_FIELDS)
+        language_total = number(raw["C16001_001E"])
+        english_only = number(raw["C16001_002E"])
+        non_english = None if language_total is None or english_only is None else language_total - english_only
+        foreign_born = sum(number(raw[field]) or 0 for field in ("B05001_005E", "B05001_006E"))
+        result.append({"geoid": f"{raw['state']}{raw['county']}{raw['tract']}", "tract_name": raw["NAME"], "state_fips": raw["state"], "county_fips": raw["county"], "tract_code": raw["tract"], "population_count": number(raw["B01003_001E"]), "age_18_34_count": age_18_34, "foreign_born_count": foreign_born, "median_income": number(raw["B19013_001E"]), "language_population_age_5_plus_count": language_total, "english_only_at_home_count": english_only, "non_english_at_home_count": non_english, "occupied_housing_units_count": number(raw["B25003_001E"]), "renter_occupied_housing_units_count": number(raw["B25003_003E"]), "total_commuter_count": number(raw["B08301_001E"]), "public_transit_commuter_count": number(raw["B08301_010E"])})
     return result

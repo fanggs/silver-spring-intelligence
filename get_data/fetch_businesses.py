@@ -44,5 +44,8 @@ def fetch_businesses():
     for item in response.json().get("elements", []):
         tags = item.get("tags", {}); latitude = item.get("lat") or item.get("center", {}).get("lat"); longitude = item.get("lon") or item.get("center", {}).get("lon")
         if not tags.get("name") or latitude is None or longitude is None: continue
-        identity = f"{item.get('type')}:{item.get('id')}"; points.append({"business_id": hashlib.sha1(identity.encode()).hexdigest(), "name": tags["name"], "category": category(tags), "address": " ".join(filter(None,[tags.get("addr:housenumber"),tags.get("addr:street")])), "latitude": latitude, "longitude": longitude, "source_name": "OpenStreetMap via Overpass API", "source_url": "https://www.openstreetmap.org", "last_checked_at": now})
+        item_type = item.get("type")
+        item_id = item.get("id")
+        identity = f"{item_type}:{item_id}"
+        points.append({"business_id": hashlib.sha1(identity.encode()).hexdigest(), "name": tags["name"], "category": category(tags), "address": " ".join(filter(None,[tags.get("addr:housenumber"),tags.get("addr:street")])), "latitude": latitude, "longitude": longitude, "source_name": "OpenStreetMap via Overpass API", "source_url": f"https://www.openstreetmap.org/{item_type}/{item_id}", "last_checked_at": now})
     return points

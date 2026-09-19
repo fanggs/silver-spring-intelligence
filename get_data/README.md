@@ -10,7 +10,9 @@ Planned scripts:
 - `build_database.py`: creates `data/silverspring.db`.
 - `validate_database.py`: verifies the database before a commit.
 
-The output database is not committed. The scripts, schema, and source metadata are.
+The validated output database, `data/silverspring.db`, is committed so the API/LLM
+teammate can query the same reviewed artifact. The project-root `.env` remains
+private and must never be committed.
 
 ## Run
 
