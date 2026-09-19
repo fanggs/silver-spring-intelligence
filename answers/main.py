@@ -373,9 +373,10 @@ def _to_label_value(rows):
             elif value is None and isinstance(v, (int, float)) and not isinstance(v, bool):
                 value = phrase(k, v)
         # "Census Tract 7019" is not an answer to "where are the cheapest
-        # homes". Say the neighbourhood and keep the tract as the footnote.
+        # homes". Say the neighbourhood instead - but only ever in place of a
+        # tract number. A business row already has a better label: its name.
         names = place_names.get(str(r.get("geoid") or ""))
-        if names:
+        if names and (label is None or "census tract" in label.lower()):
             label = " · ".join(names[:2])
 
         # A business row has no meaningful number — its category is the value.
