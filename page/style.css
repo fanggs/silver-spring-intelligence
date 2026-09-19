@@ -232,3 +232,80 @@ html{scroll-behavior:auto;}
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* Map legend — the dots meant nothing without it. */
+.map-legend {
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(32, 56, 43, 0.18);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.35;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    max-width: 220px;
+}
+
+.map-legend h4 {
+    margin: 0 0 6px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #20382b;
+}
+
+.map-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 3px 0;
+}
+
+.map-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1.5px solid #ffffff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+    flex: none;
+}
+
+.map-legend-label {
+    flex: 1 1 auto;
+    color: #2d3b33;
+}
+
+.map-legend-count {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    color: #5a6b60;
+}
+
+.map-legend-note {
+    margin: 7px 0 0;
+    padding-top: 6px;
+    border-top: 1px solid rgba(32, 56, 43, 0.12);
+    font-size: 11px;
+    color: #66756c;
+}
+
+.popup-group {
+    margin-top: 3px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #66756c;
+}
+
+@media (max-width: 640px) {
+    .map-legend { max-width: 165px; font-size: 11px; padding: 8px 9px; }
+}
+
+/* Boundary swatch for the static legend under the map. */
+.swatch-boundary {
+    display: inline-block;
+    width: 14px;
+    height: 0;
+    border-top: 2px dashed #1d3326;
+    vertical-align: middle;
+    margin-right: 4px;
+}
