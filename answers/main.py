@@ -68,6 +68,28 @@ def _ask_claude(prompt: str, max_tokens: int = 700) -> str:
 
 # ---------------------------------------------------------------- endpoints
 
+@app.get("/")
+def index():
+    """Landing route so the bare URL explains itself instead of 404ing."""
+    return {
+        "service": "CivicLens API",
+        "what": "Queryable public community data for Montgomery County, Maryland "
+                "(which contains Silver Spring). 232 census tracts, 5,953 businesses.",
+        "endpoints": {
+            "GET  /health": "service + database status",
+            "GET  /tracts": "all 232 census tract boundaries as GeoJSON",
+            "GET  /businesses": "business locations with category and coordinates",
+            "POST /ask": "ask a question in plain English -> answer, sources, and the SQL we ran",
+            "GET  /docs": "interactive API explorer",
+        },
+        "sources": [
+            "ACS 5-Year Estimates 2020-2024, U.S. Census Bureau",
+            "Census TIGER/Line tract boundaries, 2024",
+            "OpenStreetMap via Overpass API",
+        ],
+    }
+
+
 @app.get("/health")
 def health():
     """Alive check, plus a quick look at whether the database is present."""
@@ -131,7 +153,8 @@ def businesses(limit: int = 6000):
         (limit,),
     ).fetchall()
     conn.close()
-    return {"count": len(rows), "businesses": [dict(r) for r in rows]}
+    # Returns a plain array so the map can iterate it directly.
+    return [dict(r) for r in rows]
 
 
 @app.post("/ask")
