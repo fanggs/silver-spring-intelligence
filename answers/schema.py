@@ -86,12 +86,15 @@ Spring is the subject.
   wording is close ("Fenton" for "Fenton Village"). A place can map to more
   than one tract, so aggregate across them.
 
-  places.kind = 'district' means a downtown planning district (Fenton
+  places.kind = 'district' means a downtown sector-plan district (Fenton
   Village, Ellsworth, Ripley District, Metro Center, Downtown North, South
-  Silver Spring, Falklands). These have no published boundary of their own
-  and resolve to the four downtown tracts, so several of them return the
-  same numbers. That is honest, not a bug - say the figures cover downtown
-  Silver Spring, the finest level the Census publishes.
+  Silver Spring, Falklands). No agency publishes their boundaries, so each
+  was located from its namesake street clipped to the official Silver Spring
+  CBD - places.precision records exactly how. Adjacent districts can share a
+  tract (Ripley District and Metro Center are both in 7025.01), so they will
+  return the same demographic figures. Say so plainly when it happens: the
+  Census publishes no smaller than a tract. Business counts can still differ
+  between districts that span different tracts.
 
   places.kind = anything else came from OpenStreetMap and is located in the
   single tract containing that place's point.

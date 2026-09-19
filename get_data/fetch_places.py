@@ -93,35 +93,68 @@ def assign_tracts(places, tract_rows):
     return located
 
 
-# Montgomery County's downtown sector plan names districts that no mapping
-# dataset carries as boundaries: Ellsworth, Ripley, Metro Center and the
-# rest. They are all inside downtown Silver Spring, and the Census publishes
-# at tract level, so they resolve to the downtown tracts rather than to a
-# boundary of their own. Marked 'district' so an answer can say so plainly
-# instead of implying a precision the data does not have.
-DOWNTOWN_TRACTS = ["24031702502", "24031702503", "24031702501", "24031702402"]
+# Montgomery County's downtown sector plan names seven districts, and no
+# agency publishes their boundaries - not OpenStreetMap, not the county GIS,
+# not the planning GIS, not ArcGIS Online. They exist as figures in a PDF.
+#
+# So we locate each one from two sources that DO exist:
+#   1. its namesake street or landmark in OpenStreetMap, and
+#   2. the official Silver Spring Central Business District polygon from
+#      Montgomery County Planning, used to clip the street so that Fenton
+#      Street running south to Takoma Park doesn't drag the district with it.
+# The two districts with no namesake are split from the CBD at the Metro
+# station's latitude, which is what their names describe.
+#
+# The result is a tract assignment, not a boundary. We say so in `precision`
+# rather than implying the Census measures these districts separately - it
+# does not, and a tract is the finest level it publishes.
 DOWNTOWN_PLAN_URL = (
     "https://montgomeryplanning.org/planning/communities/"
     "silver-spring/silver-spring-downtown-and-adjacent-communities-plan/"
 )
-DOWNTOWN_DISTRICTS = [
-    "Fenton Village", "Ellsworth", "Ripley District", "Metro Center",
-    "Downtown North", "South Silver Spring", "Falklands",
-]
+CBD_SOURCE_URL = (
+    "https://montgomeryplans.org/server/rest/services/Overlays/"
+    "Central_Business_Districts_CBD/FeatureServer/0"
+)
+
+# district -> (tracts, how it was located)
+DOWNTOWN_DISTRICTS = {
+    "Fenton Village": (
+        ["24031702402", "24031702502", "24031702503"],
+        "Fenton Street within the official Silver Spring CBD"),
+    "Ellsworth": (
+        ["24031702503"],
+        "Ellsworth Drive within the official Silver Spring CBD"),
+    "Ripley District": (
+        ["24031702501"],
+        "Ripley Street within the official Silver Spring CBD"),
+    "Falklands": (
+        ["24031702604"],
+        "East and West Falkland Lane within the official Silver Spring CBD"),
+    "Metro Center": (
+        ["24031702501"],
+        "the Silver Spring Metro station"),
+    "Downtown North": (
+        ["24031702503"],
+        "the part of the official CBD north of the Metro station"),
+    "South Silver Spring": (
+        ["24031702502", "24031702501"],
+        "the part of the official CBD south of the Metro station"),
+}
 
 
 def downtown_district_rows():
     rows = []
-    for name in DOWNTOWN_DISTRICTS:
-        for geoid in DOWNTOWN_TRACTS:
+    for name, (geoids, how) in DOWNTOWN_DISTRICTS.items():
+        for geoid in geoids:
             rows.append({
                 "name": name,
                 "kind": "district",
                 "geoid": geoid,
                 "latitude": None,
                 "longitude": None,
-                "precision": "downtown tracts",
-                "source_name": "Montgomery County Planning Department",
-                "source_url": DOWNTOWN_PLAN_URL,
+                "precision": f"tract containing {how}",
+                "source_name": "Montgomery County Planning / OpenStreetMap",
+                "source_url": CBD_SOURCE_URL,
             })
     return rows
