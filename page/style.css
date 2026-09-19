@@ -372,3 +372,8 @@ html{scroll-behavior:auto;}
     .hero-caption { font-size: 11px; padding: 8px 12px; }
     .hero-caption strong { font-size: 13px; }
 }
+
+/* The status bar used to sit here and provide the gap; it only appears on
+   failure now, so the form carries its own spacing. */
+.app-question-form { margin-top: 26px; }
+.app-banner[hidden] { display: none; }

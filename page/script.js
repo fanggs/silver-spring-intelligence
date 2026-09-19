@@ -139,8 +139,15 @@ function initAppPage() {
     ];
 
     function setBanner(message, kind = "") {
-        ui.banner.textContent = message;
-        ui.banner.className = `app-banner${kind ? ` is-${kind}` : ""}`;
+        // Nothing to say when it works. A bar naming ACS vintages is for us,
+        // not for someone trying to find out about their neighbourhood, so
+        // the banner only appears when something is actually wrong.
+        // "demo" stays visible on purpose: it warns that the figures on
+        // screen are synthetic, which the user must not miss.
+        const isProblem = kind === "warning" || kind === "error" || kind === "demo";
+        ui.banner.hidden = !isProblem;
+        ui.banner.textContent = isProblem ? message : "";
+        ui.banner.className = `app-banner${isProblem ? ` is-${kind}` : ""}`;
     }
 
     function showMessage(message, isError = false) {
@@ -837,8 +844,8 @@ function initAppPage() {
 
         setBanner(
             failures.length
-                ? `Live server reached, but some map data is unavailable: ${failures.join("; ")}`
-                : "ACS 2016-2020 and 2020-2024 · Census TIGER 2024 · OpenStreetMap",
+                ? `Some map data could not be loaded: ${failures.join("; ")}`
+                : "",
             failures.length ? "warning" : "live"
         );
 
