@@ -1,323 +1,553 @@
 "use strict";
 
-/*
- * BRIDGE SETTINGS — ask the owner of answers/ for these existing routes.
- * Leave blank until the route and its response contract are confirmed.
- * Use relative paths if this page is served by the same FastAPI origin.
- * Do not put a Census or OpenAI API key in this file.
- */
-const API = {
-    answerUrl: "", // Example shape only: "/existing-answer-route"
-    mapUrl: ""     // Optional existing GET route returning GeoJSON
-};
+/* Change only this address when Alan gives you the deployed URL. No API keys go here. */
+const API_BASE_URL = "http://localhost:8000";
+const SCOPE_MESSAGE = "I can't answer that from the data I have. I can tell you about population, languages spoken at home, household income, and foreign-born residents for any census tract in Montgomery County, Maryland — plus local business locations.";
 
-const elements = {
-    heroVisual: document.getElementById("heroVisual"),
-    locationCard: document.getElementById("locationCard"),
-    form: document.getElementById("questionForm"),
-    question: document.getElementById("questionInput"),
-    askButton: document.getElementById("askButton"),
-    connection: document.getElementById("connectionStatus"),
-    answerStatus: document.getElementById("answerStatus"),
-    answerContent: document.getElementById("answerContent"),
-    interpretation: document.getElementById("answerInterpretation"),
-    answer: document.getElementById("answerText"),
-    metrics: document.getElementById("answerMetrics"),
-    methodology: document.getElementById("answerMethodology"),
-    context: document.getElementById("answerContext"),
-    sources: document.getElementById("answerSources"),
-    map: document.getElementById("mapContainer"),
-    mapGeography: document.getElementById("mapGeography"),
-    selectedPlace: document.getElementById("selectedPlace"),
-    clearSelection: document.getElementById("clearSelection")
-};
+function initLandingPage() {
+    const heroVisual = document.getElementById("heroVisual");
+    const locationCard = document.getElementById("locationCard");
 
-let selectedGeoid = null;
-let currentFeatures = [];
+    if (heroVisual && locationCard && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        heroVisual.addEventListener("mousemove", (event) => {
+            const box = heroVisual.getBoundingClientRect();
+            const x = (event.clientX - box.left) / box.width;
+            const y = (event.clientY - box.top) / box.height;
+            locationCard.style.transform = `translate(${x * 8}px, ${y * 8}px)`;
+        });
 
-// Keep the original small hero motion, but respect reduced-motion settings.
-if (elements.heroVisual && elements.locationCard &&
-    !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    elements.heroVisual.addEventListener("mousemove", (event) => {
-        const box = elements.heroVisual.getBoundingClientRect();
-        const x = (event.clientX - box.left) / box.width;
-        const y = (event.clientY - box.top) / box.height;
-        elements.locationCard.style.transform = `translate(${x * 8}px, ${y * 8}px)`;
-    });
-    elements.heroVisual.addEventListener("mouseleave", () => {
-        elements.locationCard.style.transform = "translate(0, 0)";
-    });
-}
-
-document.querySelectorAll(".nav-links a").forEach((link) => {
-    link.addEventListener("click", () => {
-        document.querySelectorAll(".nav-links a").forEach((item) => item.classList.remove("active"));
-        link.classList.add("active");
-    });
-});
-
-document.querySelectorAll(".suggestion").forEach((button) => {
-    button.addEventListener("click", () => {
-        elements.question.value = button.dataset.question || "";
-        elements.question.focus();
-    });
-});
-
-elements.clearSelection.addEventListener("click", () => {
-    selectedGeoid = null;
-    elements.selectedPlace.textContent = "";
-    elements.clearSelection.hidden = true;
-    renderMap(currentFeatures);
-});
-
-function showStatus(message, isError = false) {
-    elements.answerContent.hidden = true;
-    elements.answerStatus.hidden = false;
-    elements.answerStatus.textContent = message;
-    elements.answerStatus.classList.toggle("is-error", isError);
-}
-
-function setConnection(message, state = "") {
-    elements.connection.textContent = message;
-    elements.connection.classList.toggle("is-ready", state === "ready");
-    elements.connection.classList.toggle("is-error", state === "error");
-}
-
-async function fetchJson(url, options = {}) {
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 25000);
-    try {
-        const response = await fetch(url, { ...options, signal: controller.signal });
-        if (!response.ok) throw new Error(`Server returned HTTP ${response.status}.`);
-        const contentType = response.headers.get("content-type") || "";
-        if (!contentType.includes("json")) throw new Error("Server response was not JSON.");
-        return await response.json();
-    } finally {
-        window.clearTimeout(timer);
+        heroVisual.addEventListener("mouseleave", () => {
+            locationCard.style.transform = "translate(0, 0)";
+        });
     }
+
+    document.querySelectorAll(".nav-links a[href^='#']").forEach((link) => {
+        link.addEventListener("click", () => {
+            document.querySelectorAll(".nav-links a").forEach((item) => item.classList.remove("active"));
+            link.classList.add("active");
+        });
+    });
 }
 
-/*
- * BACKEND ADAPTER — this is the main integration seam.
- * Edit this function to match the REAL response from answers/.
- * Do not rename server routes or invent a second backend.
- * Expected frontend shape is documented in README.md.
- */
-function normalizeAnswer(payload) {
-    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-        throw new Error("Unexpected answer format from backend.");
-    }
-    return {
-        status: payload.status || "ok",
-        answer: typeof payload.answer === "string" ? payload.answer : "",
-        interpretation: typeof payload.interpretation === "string" ? payload.interpretation : "",
-        metrics: Array.isArray(payload.metrics) ? payload.metrics : [],
-        methodology: typeof payload.methodology === "string" ? payload.methodology : "",
-        geography: typeof payload.geography === "string" ? payload.geography : "",
-        vintage: typeof payload.vintage === "string" ? payload.vintage : "",
-        sources: Array.isArray(payload.sources) ? payload.sources : [],
-        map: payload.map || null
+function initAppPage() {
+    const element = (id) => document.getElementById(id);
+
+    const ui = {
+        banner: element("modeBanner"),
+        form: element("askForm"),
+        question: element("questionInput"),
+        askButton: element("askButton"),
+        state: element("answerState"),
+        result: element("answerResult"),
+        answer: element("answerText"),
+        sources: element("sourceList"),
+        rows: element("supportRows"),
+        layerStatus: element("layerStatus"),
+        mapFallback: element("mapFallback"),
+        place: element("placeInput"),
+        placeGo: element("placeGo")
     };
-}
 
-function addText(parent, tag, value, className = "") {
-    const node = document.createElement(tag);
-    node.textContent = String(value);
-    if (className) node.className = className;
-    parent.appendChild(node);
-    return node;
-}
+    let map = null;
+    let tractLayer = null;
+    let businessLayer = null;
+    const tractLayersByGeoid = new Map();
+    let activeGeoids = new Set();
+    let demoMode = false;
 
-function safeSourceUrl(value) {
-    if (typeof value !== "string" || !/^https?:\/\//i.test(value.trim())) return null;
-    try {
-        const url = new URL(value);
-        return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
-    } catch (_error) {
-        return null;
+    // These objects use Alan's final API field names. All demo content is synthetic.
+    const demoAnswer = {
+        answer: "DEMO ONLY: This is a preview of where a real, source-backed answer from Alan's server will appear.",
+        highlight_geoids: ["DEMO-001", "DEMO-002"],
+        table: [{ label: "Sample value — not a real statistic", value: 0 }],
+        sources: [{
+            label: "Example link: Census API documentation (not evidence for demo data)",
+            url: "https://www.census.gov/data/developers.html"
+        }]
+    };
+
+    const demoTracts = {
+        type: "FeatureCollection",
+        features: [
+            {
+                type: "Feature",
+                properties: { geoid: "DEMO-001", name: "Synthetic demo tract 1" },
+                geometry: {
+                    type: "Polygon",
+                    coordinates: [[
+                        [-77.046, 38.977], [-77.026, 38.977], [-77.026, 38.995],
+                        [-77.046, 38.995], [-77.046, 38.977]
+                    ]]
+                }
+            },
+            {
+                type: "Feature",
+                properties: { geoid: "DEMO-002", name: "Synthetic demo tract 2" },
+                geometry: {
+                    type: "Polygon",
+                    coordinates: [[
+                        [-77.026, 38.977], [-77.007, 38.977], [-77.007, 38.995],
+                        [-77.026, 38.995], [-77.026, 38.977]
+                    ]]
+                }
+            },
+            {
+                type: "Feature",
+                properties: { geoid: "DEMO-003", name: "Synthetic demo tract 3" },
+                geometry: {
+                    type: "Polygon",
+                    coordinates: [[
+                        [-77.046, 38.995], [-77.026, 38.995], [-77.026, 39.012],
+                        [-77.046, 39.012], [-77.046, 38.995]
+                    ]]
+                }
+            },
+            {
+                type: "Feature",
+                properties: { geoid: "DEMO-004", name: "Synthetic demo tract 4" },
+                geometry: {
+                    type: "Polygon",
+                    coordinates: [[
+                        [-77.026, 38.995], [-77.007, 38.995], [-77.007, 39.012],
+                        [-77.026, 39.012], [-77.026, 38.995]
+                    ]]
+                }
+            }
+        ]
+    };
+
+    const demoBusinesses = [
+        {
+            name: "Synthetic demo business A",
+            category: "example",
+            latitude: 38.99487,
+            longitude: -77.02489,
+            geoid: "DEMO-002"
+        },
+        {
+            name: "Synthetic demo business B",
+            category: "example",
+            latitude: 38.988,
+            longitude: -77.031,
+            geoid: "DEMO-001"
+        }
+    ];
+
+    function setBanner(message, kind = "") {
+        ui.banner.textContent = message;
+        ui.banner.className = `app-banner${kind ? ` is-${kind}` : ""}`;
     }
-}
 
-function renderAnswer(result) {
-    if (result.status === "no_data" || !result.answer.trim()) {
-        showStatus(result.answer || "The available data cannot answer this question yet.");
-        return;
+    function showMessage(message, isError = false) {
+        ui.result.hidden = true;
+        ui.state.hidden = false;
+        ui.state.textContent = message;
+        ui.state.classList.toggle("is-error", isError);
     }
 
-    elements.answerStatus.hidden = true;
-    elements.answerContent.hidden = false;
-    elements.interpretation.textContent = result.interpretation ? `Question interpreted as: ${result.interpretation}` : "";
-    elements.answer.textContent = result.answer;
-    elements.metrics.replaceChildren();
-    result.metrics.forEach((metric) => {
-        if (!metric || typeof metric !== "object") return;
-        const wrapper = document.createElement("div");
-        addText(wrapper, "dt", metric.label ?? "Metric");
-        addText(wrapper, "dd", metric.value ?? "Not available");
-        if (metric.formula) addText(wrapper, "small", `Formula: ${metric.formula}`);
-        elements.metrics.appendChild(wrapper);
-    });
+    function validUrl(value) {
+        if (typeof value !== "string" || !/^https?:\/\//i.test(value.trim())) return null;
+        try {
+            return new URL(value).href;
+        } catch (_error) {
+            return null;
+        }
+    }
 
-    elements.methodology.textContent = result.methodology || "No calculation or methodology was returned.";
-    const contextParts = [result.geography, result.vintage && `Data vintage: ${result.vintage}`].filter(Boolean);
-    elements.context.textContent = contextParts.join(" · ") || "Geography and data vintage were not returned.";
-    elements.sources.replaceChildren();
-    result.sources.forEach((source) => {
-        if (!source || typeof source !== "object") return;
-        const item = document.createElement("li");
-        const href = safeSourceUrl(source.url);
-        if (href) {
-            const link = addText(item, "a", source.label || source.name || href);
+    function renderAnswer(payload) {
+        // These four names are the exact /ask response contract.
+        const answer = typeof payload?.answer === "string" ? payload.answer.trim() : "";
+        const highlights = Array.isArray(payload?.highlight_geoids) ? payload.highlight_geoids : [];
+        const table = Array.isArray(payload?.table) ? payload.table : [];
+        const sources = Array.isArray(payload?.sources) ? payload.sources : [];
+
+        activeGeoids = new Set(highlights.map(String));
+        updateHighlights();
+
+        if (!answer) {
+            showMessage(SCOPE_MESSAGE, true);
+            return;
+        }
+
+        ui.state.hidden = true;
+        ui.result.hidden = false;
+        ui.answer.textContent = answer;
+        ui.sources.replaceChildren();
+
+        sources.forEach((source) => {
+            const href = validUrl(source?.url);
+            if (!href) return;
+
+            const item = document.createElement("li");
+            const link = document.createElement("a");
             link.href = href;
             link.target = "_blank";
             link.rel = "noopener noreferrer";
-        } else {
-            addText(item, "span", source.label || source.name || "Source URL unavailable");
-        }
-        elements.sources.appendChild(item);
-    });
-    if (!elements.sources.children.length) {
-        addText(elements.sources, "li", "No source links were returned. Treat this answer as unverified.");
-    }
-    if (result.geography) elements.mapGeography.textContent = result.geography;
-    if (result.map) renderMap(result.map);
-}
-
-elements.form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const question = elements.question.value.trim();
-    if (!question) return;
-    if (!API.answerUrl) {
-        showStatus("The answer route is not configured. Ask your backend teammate for the existing route and JSON response, then edit the BRIDGE SETTINGS and normalizeAnswer() in script.js.", true);
-        return;
-    }
-    elements.askButton.disabled = true;
-    showStatus("Checking the data and preparing an answer…");
-    try {
-        const payload = await fetchJson(API.answerUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ question, geoid: selectedGeoid })
+            link.textContent = String(source.label || href);
+            item.appendChild(link);
+            ui.sources.appendChild(item);
         });
-        renderAnswer(normalizeAnswer(payload));
-        setConnection("Connected to the backend.", "ready");
-    } catch (error) {
-        const detail = error.name === "AbortError" ? "The request timed out." : error.message;
-        showStatus(`We could not load an answer. ${detail}`, true);
-        setConnection("Backend request failed. Check the route, server, and browser console.", "error");
-    } finally {
-        elements.askButton.disabled = false;
-    }
-});
 
-function featuresFrom(value) {
-    if (value?.type === "FeatureCollection" && Array.isArray(value.features)) return value.features;
-    if (Array.isArray(value?.features)) return value.features;
-    if (Array.isArray(value)) return value;
-    return [];
-}
-
-function coordinatePairs(value, output) {
-    if (!Array.isArray(value)) return;
-    if (value.length >= 2 && Number.isFinite(value[0]) && Number.isFinite(value[1])) {
-        output.push(value);
-        return;
-    }
-    value.forEach((item) => coordinatePairs(item, output));
-}
-
-function pathForGeometry(geometry, project) {
-    if (!geometry || !["Polygon", "MultiPolygon"].includes(geometry.type)) return "";
-    const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
-    if (!Array.isArray(polygons)) return "";
-    return polygons.flatMap((polygon) => (Array.isArray(polygon) ? polygon : []).map((ring) => {
-        if (!Array.isArray(ring) || ring.length < 3) return "";
-        return ring.map((pair, index) => {
-            if (!Array.isArray(pair) || !Number.isFinite(pair[0]) || !Number.isFinite(pair[1])) return "";
-            const [x, y] = project(pair);
-            return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
-        }).join(" ") + " Z";
-    })).join(" ");
-}
-
-function renderMap(input) {
-    const features = featuresFrom(input);
-    currentFeatures = features;
-    const pairs = [];
-    features.forEach((feature) => coordinatePairs(feature?.geometry?.coordinates, pairs));
-    if (!pairs.length) {
-        elements.map.replaceChildren();
-        addText(elements.map, "p", "No map geometry was returned by the backend.", "map-placeholder");
-        elements.map.setAttribute("aria-label", "No map geometry available");
-        return;
-    }
-    let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
-    pairs.forEach(([lon, lat]) => {
-        minLon = Math.min(minLon, lon);
-        maxLon = Math.max(maxLon, lon);
-        minLat = Math.min(minLat, lat);
-        maxLat = Math.max(maxLat, lat);
-    });
-    const centerLon = (minLon + maxLon) / 2, centerLat = (minLat + maxLat) / 2;
-    const scale = Math.min(930 / Math.max(maxLon - minLon, .001), 550 / Math.max(maxLat - minLat, .001));
-    const project = (pair) => [500 + (pair[0] - centerLon) * scale, 310 - (pair[1] - centerLat) * scale];
-    const ns = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 1000 620");
-    svg.setAttribute("aria-label", "CivicLens map with selectable census tracts");
-
-    features.forEach((feature) => {
-        const geometry = feature?.geometry;
-        const properties = feature?.properties || {};
-        if (!geometry || !["Polygon", "MultiPolygon"].includes(geometry.type)) return;
-        const path = document.createElementNS(ns, "path");
-        path.setAttribute("d", pathForGeometry(geometry, project));
-        path.setAttribute("fill-rule", "evenodd");
-        path.setAttribute("class", `map-tract${String(properties.geoid) === selectedGeoid ? " is-selected" : ""}`);
-        const label = properties.tract_name || properties.name || properties.geoid || "Census tract";
-        path.setAttribute("aria-label", String(label));
-        const title = document.createElementNS(ns, "title");
-        title.textContent = String(label);
-        path.appendChild(title);
-        if (properties.geoid !== undefined && properties.geoid !== null) {
-            path.setAttribute("tabindex", "0");
-            const select = () => {
-                selectedGeoid = String(properties.geoid); // GEOIDs must retain leading zeros.
-                elements.selectedPlace.textContent = `Selected tract: ${label} (${selectedGeoid})`;
-                elements.clearSelection.hidden = false;
-                renderMap(currentFeatures);
-            };
-            path.addEventListener("click", select);
-            path.addEventListener("keydown", (event) => {
-                if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); }
-            });
+        if (!ui.sources.children.length) {
+            const item = document.createElement("li");
+            item.textContent = "No clickable sources were returned. This answer is not verified.";
+            ui.sources.appendChild(item);
         }
-        svg.appendChild(path);
+
+        ui.rows.replaceChildren();
+
+        table.forEach((row) => {
+            if (!row || typeof row !== "object") return;
+
+            const tr = document.createElement("tr");
+            const label = document.createElement("th");
+            label.scope = "row";
+            label.textContent = String(row.label ?? "Measure");
+
+            const value = document.createElement("td");
+            value.textContent =
+                row.value === null || row.value === undefined
+                    ? "Not available"
+                    : String(row.value);
+
+            tr.append(label, value);
+            ui.rows.appendChild(tr);
+        });
+
+        if (!ui.rows.children.length) {
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = 2;
+            td.textContent = "No supporting rows were returned.";
+            tr.appendChild(td);
+            ui.rows.appendChild(tr);
+        }
+    }
+
+    function baseTractStyle() {
+        return {
+            color: "#40634b",
+            weight: 1,
+            fillColor: "#9fbea6",
+            fillOpacity: 0.32
+        };
+    }
+
+    function updateHighlights() {
+        if (!map) return;
+
+        const selectedLayers = [];
+
+        tractLayersByGeoid.forEach((layers, geoid) => {
+            const selected = activeGeoids.has(geoid);
+
+            layers.forEach((layer) => {
+                layer.setStyle(
+                    selected
+                        ? {
+                            color: "#b9422a",
+                            weight: 3,
+                            fillColor: "#ff795f",
+                            fillOpacity: 0.68
+                        }
+                        : baseTractStyle()
+                );
+
+                if (selected) {
+                    layer.bringToFront();
+                    selectedLayers.push(layer);
+                }
+            });
+        });
+
+        if (selectedLayers.length) {
+            const bounds = L.featureGroup(selectedLayers).getBounds();
+            if (bounds.isValid()) {
+                map.fitBounds(bounds.pad(0.25), { maxZoom: 13 });
+            }
+        }
+    }
+
+    function drawTracts(geojson) {
+        if (!map) return;
+
+        if (geojson?.type !== "FeatureCollection" || !Array.isArray(geojson.features)) {
+            throw new Error("/tracts did not return a GeoJSON FeatureCollection.");
+        }
+
+        if (tractLayer) map.removeLayer(tractLayer);
+        tractLayersByGeoid.clear();
+
+        tractLayer = L.geoJSON(geojson, {
+            style: baseTractStyle,
+
+            onEachFeature(feature, layer) {
+                const geoid = feature.properties?.geoid;
+                if (geoid === undefined || geoid === null) return;
+
+                const id = String(geoid); // Preserve leading zeroes.
+                const layers = tractLayersByGeoid.get(id) || [];
+                layers.push(layer);
+                tractLayersByGeoid.set(id, layers);
+
+                const popup = document.createElement("div");
+                const title = document.createElement("strong");
+                title.textContent = String(
+                    feature.properties?.name ||
+                    feature.properties?.tract_name ||
+                    "Census tract"
+                );
+
+                const code = document.createElement("div");
+                code.textContent = `GEOID: ${id}`;
+
+                popup.append(title, code);
+                layer.bindPopup(popup);
+            }
+        }).addTo(map);
+
+        updateHighlights();
+    }
+
+    function drawBusinesses(points) {
+        if (!map) return;
+
+        if (!Array.isArray(points)) {
+            throw new Error("/businesses did not return a point array.");
+        }
+
+        if (businessLayer) map.removeLayer(businessLayer);
+        businessLayer = L.layerGroup().addTo(map);
+        const canvas = L.canvas();
+
+        points.forEach((point) => {
+            const latitude = Number(point?.latitude);
+            const longitude = Number(point?.longitude);
+
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+            const pin = L.circleMarker([latitude, longitude], {
+                renderer: canvas,
+                radius: 5,
+                color: "#ffffff",
+                weight: 1.5,
+                fillColor: "#20382b",
+                fillOpacity: 0.95
+            });
+
+            const popup = document.createElement("div");
+            const title = document.createElement("strong");
+            title.textContent = String(point.name || "Business");
+
+            const category = document.createElement("div");
+            category.textContent = String(point.category || "Category unavailable");
+
+            popup.append(title, category);
+            pin.bindPopup(popup);
+            pin.addTo(businessLayer);
+        });
+    }
+
+    function initMap() {
+        if (typeof L === "undefined") {
+            ui.mapFallback.hidden = false;
+            ui.layerStatus.textContent = "Map library unavailable; answers can still be requested.";
+            return;
+        }
+
+        // Open on wider Silver Spring, not Fenton Village alone.
+        map = L.map("map").setView([38.9907, -77.0261], 12);
+
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution:
+                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+        }).addTo(map);
+    }
+
+    async function requestJson(path, options = {}) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 20000);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}${path}`, {
+                ...options,
+                headers: {
+                    Accept: "application/json",
+                    ...(options.headers || {})
+                },
+                signal: controller.signal
+            });
+
+            if (!response.ok) {
+                throw new Error(`${path} returned HTTP ${response.status}`);
+            }
+
+            return await response.json();
+        } finally {
+            window.clearTimeout(timer);
+        }
+    }
+
+    function enableDemo(reason) {
+        demoMode = true;
+        setBanner(
+            `DEMO MODE — synthetic polygons, pins, answer, and value. No Census results are shown. ${reason}`,
+            "demo"
+        );
+        drawTracts(demoTracts);
+        drawBusinesses(demoBusinesses);
+        renderAnswer(demoAnswer);
+        ui.layerStatus.textContent =
+            "Showing synthetic example layers while the API is unavailable.";
+    }
+
+    async function loadLayers() {
+        const [tracts, businesses] = await Promise.allSettled([
+            requestJson("/tracts"),
+            requestJson("/businesses")
+        ]);
+
+        const bothNetworkFailures =
+            tracts.status === "rejected" &&
+            businesses.status === "rejected" &&
+            tracts.reason instanceof TypeError &&
+            businesses.reason instanceof TypeError;
+
+        if (bothNetworkFailures) {
+            enableDemo(
+                "The backend could not be reached (or CORS blocked it). Refresh when it is running."
+            );
+            return;
+        }
+
+        const failures = [];
+
+        if (tracts.status === "fulfilled") {
+            try {
+                drawTracts(tracts.value);
+            } catch (error) {
+                failures.push(error.message);
+            }
+        } else {
+            failures.push(tracts.reason.message);
+        }
+
+        if (businesses.status === "fulfilled") {
+            try {
+                drawBusinesses(businesses.value);
+            } catch (error) {
+                failures.push(error.message);
+            }
+        } else {
+            failures.push(businesses.reason.message);
+        }
+
+        setBanner(
+            failures.length
+                ? `Live server reached, but some map data is unavailable: ${failures.join("; ")}`
+                : "LIVE DATA — connected to Alan's server.",
+            failures.length ? "warning" : "live"
+        );
+
+        ui.layerStatus.textContent = failures.length
+            ? "Some map layers could not load; you can still ask a question."
+            : "County tract polygons and business pins loaded.";
+    }
+
+    ui.form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const question = ui.question.value.trim();
+        if (!question) return;
+
+        ui.askButton.disabled = true;
+        showMessage("Checking the available data…");
+        activeGeoids = new Set();
+        updateHighlights();
+
+        try {
+            if (demoMode) {
+                renderAnswer(demoAnswer);
+            } else {
+                const payload = await requestJson("/ask", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json"
+                    },
+                    body: JSON.stringify({ question }) // Exact request: no extra fields.
+                });
+
+                renderAnswer(payload);
+            }
+        } catch (error) {
+            console.warn("CivicLens answer request failed:", error);
+            showMessage(
+                `The server could not answer this question right now. ${SCOPE_MESSAGE}`,
+                true
+            );
+        } finally {
+            ui.askButton.disabled = false;
+        }
     });
 
-    features.forEach((feature) => {
-        if (feature?.geometry?.type !== "Point") return;
-        const pair = feature.geometry.coordinates;
-        if (!Array.isArray(pair) || !Number.isFinite(pair[0]) || !Number.isFinite(pair[1])) return;
-        const [x, y] = project(pair);
-        const point = document.createElementNS(ns, "circle");
-        const kind = feature.properties?.layer === "transit" ? "transit" : "business";
-        point.setAttribute("class", `map-point-${kind}`);
-        point.setAttribute("cx", x.toFixed(2));
-        point.setAttribute("cy", y.toFixed(2));
-        point.setAttribute("r", "5");
-        const title = document.createElementNS(ns, "title");
-        title.textContent = String(feature.properties?.name || kind);
-        point.appendChild(title);
-        svg.appendChild(point);
+    const placeViews = {
+        "silver spring": [[38.9907, -77.0261], 12],
+        "fenton village": [[38.99487, -77.02489], 15],
+        bethesda: [[38.9847, -77.0947], 13],
+        rockville: [[39.0839, -77.1528], 13]
+    };
+
+    ui.placeGo.addEventListener("click", () => {
+        const search = ui.place.value.trim().toLowerCase();
+
+        if (!map) {
+            ui.layerStatus.textContent = "The map is unavailable right now.";
+            return;
+        }
+
+        if (placeViews[search]) {
+            map.setView(...placeViews[search]);
+            ui.layerStatus.textContent = `Map centered on ${ui.place.value.trim()}.`;
+            return;
+        }
+
+        const tract = tractLayersByGeoid.get(ui.place.value.trim());
+
+        if (tract?.length) {
+            map.fitBounds(L.featureGroup(tract).getBounds(), { maxZoom: 15 });
+            ui.layerStatus.textContent =
+                `Map centered on tract ${ui.place.value.trim()}.`;
+            return;
+        }
+
+        ui.layerStatus.textContent =
+            "Place not found. Try Silver Spring, Fenton Village, Bethesda, Rockville, or a tract GEOID.";
     });
-    elements.map.replaceChildren(svg);
-    elements.map.setAttribute("aria-label", "CivicLens map with selectable census tracts and point locations");
+
+    ui.place.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            ui.placeGo.click();
+        }
+    });
+
+    initMap();
+
+    loadLayers().catch((error) => {
+        console.warn("CivicLens map data failed:", error);
+        setBanner(
+            "Could not load map data. Check the server address and try refreshing.",
+            "warning"
+        );
+        ui.layerStatus.textContent =
+            "Map layers unavailable; questions may still work.";
+    });
 }
 
-if (API.answerUrl) setConnection("Answer route configured. Submit a question to test it.", "ready");
-if (API.mapUrl) {
-    fetchJson(API.mapUrl).then(renderMap).catch((error) => {
-        setConnection(`Map could not load: ${error.message}`, "error");
-    });
+if (document.getElementById("askForm")) {
+    initAppPage();
+} else {
+    initLandingPage();
 }

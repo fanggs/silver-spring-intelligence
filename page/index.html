@@ -1,577 +1,173 @@
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <meta
-        name="description"
-        content="CivicLens turns scattered public information into a map people can question and verify."
-    >
-
-    <title>
-        CivicLens — Silver Spring Community Intelligence
-    </title>
-
-    <link
-        rel="stylesheet"
-        href="style.css"
-    >
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="CivicLens turns scattered public information into a map people can question and verify.">
+    <title>CivicLens — Silver Spring Community Intelligence</title>
+    <link rel="stylesheet" href="style.css">
 </head>
-
-
 <body>
-
-    <header
-        class="navbar"
-        id="siteHeader"
-    >
-
-        <a
-            href="#home"
-            class="brand"
-        >
-            Civic<span>Lens</span>
-            <i>✦</i>
-        </a>
-
-
-        <p class="location">
-            SILVER SPRING, MARYLAND
-        </p>
-
-
+    <header class="navbar" id="siteHeader">
+        <a href="#home" class="brand">Civic<span>Lens</span><i>✦</i></a>
+        <p class="location">SILVER SPRING, MARYLAND</p>
         <nav class="nav-links">
-
-            <a href="#home">
-                Home
-            </a>
-
-            <a href="#explore">
-                Explore
-            </a>
-
-            <a href="#about">
-                About
-            </a>
-
-            <a href="#sources">
-                Sources
-            </a>
-
+            <a href="#home">Home</a>
+            <a href="app.html">Explore</a>
+            <a href="#about">About</a>
+            <a href="#sources">Sources</a>
         </nav>
-
-
-        <a
-            href="#explore"
-            class="nav-button"
-        >
-            Open CivicLens
-
-            <span>
-                ↗
-            </span>
-        </a>
-
+        <a href="app.html" class="nav-button">Try CivicLens <span>↗</span></a>
     </header>
 
-
     <main>
-
-        <section
-            class="hero"
-            id="home"
-        >
-
+        <section class="hero" id="home">
             <div class="hero-content">
-
-                <p class="eyebrow">
-
-                    COMMUNITY INTELLIGENCE
-
-                    <span></span>
-
-                    SILVER SPRING
-
-                </p>
-
-
-                <h1>
-
-                    Know your
-
-                    <em>
-                        neighborhood.
-                    </em>
-
-                </h1>
-
-
+                <p class="eyebrow">COMMUNITY INTELLIGENCE <span></span> SILVER SPRING</p>
+                <h1>Know your <em>neighborhood.</em></h1>
                 <p class="hero-description">
-
-                    Public information about a place
-                    should be easy to see, understand,
-                    question, and verify.
-
+                    Public information about a place should be easy to see,
+                    understand, question, and verify.
                 </p>
-
-
-                <a
-                    href="#explore"
-                    class="hero-button"
-                >
-
-                    Explore Silver Spring
-
-                    <span>
-                        ↗
-                    </span>
-
-                </a>
-
+                <a href="app.html" class="hero-button">Try CivicLens <span>↗</span></a>
             </div>
 
-
-            <div
-                class="hero-visual"
-                id="heroVisual"
-                aria-hidden="true"
-            >
-
+            <div class="hero-visual" id="heroVisual" aria-hidden="true">
                 <div class="visual-grid"></div>
-
-
-                <div
-                    class="circle circle-one"
-                ></div>
-
-                <div
-                    class="circle circle-two"
-                ></div>
-
-
-                <span
-                    class="point point-one"
-                ></span>
-
-                <span
-                    class="point point-two"
-                ></span>
-
-                <span
-                    class="point point-three"
-                ></span>
-
-
-                <div
-                    class="location-card"
-                    id="locationCard"
-                >
-
-                    <p>
-                        FENTON VILLAGE
-                    </p>
-
-                    <strong>
-                        Silver Spring
-                    </strong>
-
-                    <span>
-                        Maryland
-                    </span>
-
+                <div class="circle circle-one"></div>
+                <div class="circle circle-two"></div>
+                <span class="point point-one"></span>
+                <span class="point point-two"></span>
+                <span class="point point-three"></span>
+                <div class="location-card" id="locationCard">
+                    <p>FENTON VILLAGE</p>
+                    <strong>Silver Spring</strong>
+                    <span>Maryland</span>
                 </div>
-
             </div>
-
         </section>
-
 
         <section class="promise-strip">
-
-            <p>
-                <span>01</span>
-                ASK NATURALLY
-            </p>
-
-            <p>
-                <span>02</span>
-                SEE THE PLACE
-            </p>
-
-            <p>
-                <span>03</span>
-                VERIFY THE SOURCE
-            </p>
-
+            <p><span>01</span> ASK NATURALLY</p>
+            <p><span>02</span> SEE THE PLACE</p>
+            <p><span>03</span> VERIFY THE SOURCE</p>
         </section>
 
-
-        <section class="explore-section" id="explore" aria-labelledby="exploreTitle">
-            <div class="explore-heading">
-                <p class="section-label">EXPLORE / SILVER SPRING</p>
-                <h2 id="exploreTitle">Ask about a place. <em>See the evidence.</em></h2>
-                <p>Ask about demographics, housing, income, businesses, or transit. Fenton Village is one example within the wider map.</p>
-            </div>
-
-            <form id="questionForm" class="question-form">
-                <label for="questionInput">Your question</label>
-                <div class="question-row">
-                    <input id="questionInput" name="question" type="text" maxlength="500" required
-                           placeholder="Where are renter households concentrated?" autocomplete="off">
-                    <button id="askButton" type="submit">Ask CivicLens <span aria-hidden="true">↗</span></button>
-                </div>
-            </form>
-            <div class="suggestion-row" aria-label="Example questions">
-                <button class="suggestion" type="button" data-question="How does renter share vary across Silver Spring?">Renter share</button>
-                <button class="suggestion" type="button" data-question="Which tracts have the most residents ages 18 to 34?">Young adults</button>
-                <button class="suggestion" type="button" data-question="What can you tell me about Fenton Village?">Fenton Village</button>
-            </div>
-
-            <p id="connectionStatus" class="connection-status" role="status">Backend connection is not configured yet.</p>
-
-            <div class="explore-grid">
-                <section class="map-panel" aria-labelledby="mapTitle">
-                    <div class="panel-heading">
-                        <div><p class="section-label">THE PLACE</p><h3 id="mapTitle">Community map</h3></div>
-                        <p id="mapGeography">Silver Spring / Montgomery County</p>
-                    </div>
-                    <div id="mapContainer" class="map-container" role="region" aria-label="Map waiting for backend geography data">
-                        <p class="map-placeholder">Tract outlines, businesses, and transit stops will appear here when the backend provides GeoJSON.</p>
-                    </div>
-                    <p class="map-legend"><span class="legend-tract"></span> Census tract <span class="legend-business"></span> Business <span class="legend-transit"></span> Transit stop</p>
-                    <p class="map-note">Select a tract on the map to use it as a question filter. A highlighted area is not a neighborhood boundary unless the source says so.</p>
-                    <button id="clearSelection" class="text-button" type="button" hidden>Clear selected tract</button>
-                    <p id="selectedPlace" class="selected-place" aria-live="polite"></p>
-                </section>
-
-                <section class="answer-panel" aria-labelledby="answerTitle">
-                    <div class="panel-heading"><div><p class="section-label">THE EVIDENCE</p><h3 id="answerTitle">Answer</h3></div></div>
-                    <p id="answerStatus" class="answer-status" role="status" aria-live="polite">Ask a question to see a source-backed answer.</p>
-                    <div id="answerContent" hidden>
-                        <p id="answerInterpretation" class="answer-interpretation"></p>
-                        <p id="answerText" class="answer-text"></p>
-                        <dl id="answerMetrics" class="answer-metrics"></dl>
-                        <div class="answer-meta"><h4>How this was calculated</h4><p id="answerMethodology"></p></div>
-                        <div class="answer-meta"><h4>Data context</h4><p id="answerContext"></p></div>
-                        <div class="answer-meta"><h4>Sources</h4><ul id="answerSources"></ul></div>
-                    </div>
-                </section>
-            </div>
-        </section>
-
-
-        <section
-            class="mission-section"
-            id="about"
-        >
-
+        <section class="mission-section" id="about">
             <div class="mission-label">
-
-                <p>
-                    01 / WHY CIVICLENS
-                </p>
-
+                <p>01 / WHY CIVICLENS</p>
             </div>
-
-
             <div class="mission-main">
-
-                <h2>
-
-                    Public data
-                    is everywhere.
-
-                    <em>
-                        Understanding it
-                        shouldn't be.
-                    </em>
-
-                </h2>
-
-
+                <h2>Public data is everywhere. <em>Understanding it shouldn't be.</em></h2>
                 <div class="mission-bottom">
-
                     <p class="mission-description">
-
-                        Census records, geographic systems,
-                        planning information, and local place
-                        data often live across different
-                        platforms.
-
-                        CivicLens brings those pieces into one
-                        understandable interface.
-
+                        Census records, geographic systems, planning information,
+                        and local place data often live across different platforms.
+                        CivicLens brings those pieces into one understandable interface.
                     </p>
-
-
                     <div class="source-stack">
-
                         <div class="source-card">
-
-                            <span>
-                                01
-                            </span>
-
-                            <strong>
-                                Demographics
-                            </strong>
-
-                            <p>
-                                Census and community data
-                            </p>
-
+                            <span>01</span>
+                            <strong>Demographics</strong>
+                            <p>Census and community data</p>
                         </div>
-
-
                         <div class="source-card">
-
-                            <span>
-                                02
-                            </span>
-
-                            <strong>
-                                Geography
-                            </strong>
-
-                            <p>
-                                Boundaries and place context
-                            </p>
-
+                            <span>02</span>
+                            <strong>Geography</strong>
+                            <p>Boundaries and place context</p>
                         </div>
-
-
                         <div class="source-card">
-
-                            <span>
-                                03
-                            </span>
-
-                            <strong>
-                                Local activity
-                            </strong>
-
-                            <p>
-                                Businesses and nearby places
-                            </p>
-
+                            <span>03</span>
+                            <strong>Local activity</strong>
+                            <p>Businesses and nearby places</p>
                         </div>
-
                     </div>
-
                 </div>
-
             </div>
-
         </section>
-
 
         <section class="insight-section">
-
             <div class="insight-heading">
-
-                <p class="section-label">
-                    WHAT CAN CIVICLENS SHOW?
-                </p>
-
-                <p class="insight-number">
-                    02
-                </p>
-
+                <p class="section-label">WHAT CAN CIVICLENS SHOW?</p>
+                <p class="insight-number">02</p>
             </div>
 
-
             <div class="data-grid">
-
                 <article class="data-card card-wide">
-
                     <div class="card-top">
-
-                        <span>
-                            01
-                        </span>
-
-                        <p>
-                            DEMOGRAPHICS
-                        </p>
-
+                        <span>01</span>
+                        <p>DEMOGRAPHICS</p>
                     </div>
-
-
                     <div class="card-content">
-
-                        <h3>
-                            Who lives
-                            <em>here?</em>
-                        </h3>
-
-                        <p>
-                            Explore population, age,
-                            household income, and other
-                            community characteristics.
-                        </p>
-
+                        <h3>Who lives <em>here?</em></h3>
+                        <p>Explore population, age, household income, and other community characteristics.</p>
                     </div>
-
-
-                    <div
-                        class="card-graphic demographic-graphic"
-                        aria-hidden="true"
-                    >
-
+                    <div class="card-graphic demographic-graphic" aria-hidden="true">
                         <div class="bar bar-one"></div>
                         <div class="bar bar-two"></div>
                         <div class="bar bar-three"></div>
                         <div class="bar bar-four"></div>
                         <div class="bar bar-five"></div>
-
                     </div>
-
                 </article>
 
-
                 <article class="data-card card-dark">
-
                     <div class="card-top">
-
-                        <span>
-                            02
-                        </span>
-
-                        <p>
-                            LOCAL PLACES
-                        </p>
-
+                        <span>02</span>
+                        <p>LOCAL PLACES</p>
                     </div>
-
-
                     <div class="business-graphic">
-
                         <span class="business-dot business-one"></span>
                         <span class="business-dot business-two"></span>
                         <span class="business-dot business-three"></span>
                         <span class="business-dot business-four"></span>
-
                     </div>
-
-
                     <div class="card-content">
-
-                        <h3>
-                            What's
-                            nearby?
-                        </h3>
-
-                        <p>
-                            See public place and business
-                            information geographically.
-                        </p>
-
+                        <h3>What's nearby?</h3>
+                        <p>See public place and business information geographically.</p>
                     </div>
-
                 </article>
 
-
                 <article class="data-card card-soft">
-
                     <div class="card-top">
-
-                        <span>
-                            03
-                        </span>
-
-                        <p>
-                            PATTERNS
-                        </p>
-
+                        <span>03</span>
+                        <p>PATTERNS</p>
                     </div>
-
-
                     <div class="pattern-graphic">
-
                         <div class="pattern-line line-one"></div>
                         <div class="pattern-line line-two"></div>
                         <div class="pattern-line line-three"></div>
-
                     </div>
-
-
                     <div class="card-content">
-
-                        <h3>
-                            What's
-                            changing?
-                        </h3>
-
-                        <p>
-                            Compare places and make
-                            community patterns easier
-                            to see.
-                        </p>
-
+                        <h3>What's changing?</h3>
+                        <p>Compare places and make community patterns easier to see.</p>
                     </div>
-
                 </article>
-
 
                 <article class="data-card card-lime">
-
                     <div class="card-top">
-
-                        <span>
-                            04
-                        </span>
-
-                        <p>
-                            EVIDENCE
-                        </p>
-
+                        <span>04</span>
+                        <p>EVIDENCE</p>
                     </div>
-
-
-                    <div class="evidence-symbol">
-                        ↳
-                    </div>
-
-
+                    <div class="evidence-symbol">↳</div>
                     <div class="card-content">
-
-                        <h3>
-                            How do
-                            we know?
-                        </h3>
-
-                        <p>
-                            Trace answers back to the
-                            public source, geography,
-                            and calculation behind them.
-                        </p>
-
+                        <h3>How do we know?</h3>
+                        <p>Trace answers back to the public source, geography, and calculation behind them.</p>
                     </div>
-
                 </article>
-
             </div>
-
         </section>
 
-        <section class="sources-section" id="sources" aria-labelledby="sourcesTitle">
-            <p class="section-label">SOURCES / METHODS</p>
-            <h2 id="sourcesTitle">Every result should show its work.</h2>
-            <p>CivicLens displays the specific source, data year, geography, and calculation with each answer. The source links above appear only when returned by the backend; this page does not claim that a dataset has been loaded when it has not.</p>
+        <section class="landing-sources" id="sources">
+            <p class="section-label">SOURCES / EVIDENCE</p>
+            <h2>See where every answer comes from.</h2>
+            <p>
+                The CivicLens app places clickable source links directly under each answer.
+                Ask a question to see the source information returned by the live data server.
+            </p>
         </section>
-
     </main>
 
-
     <script src="script.js"></script>
-
 </body>
-
 </html>
