@@ -216,9 +216,15 @@ def ask(q: Question):
         answer = f"Found {len(rows)} matching result(s)."
 
     _table, _headers = _to_label_value(rows)
+    # Tracts to light up. Aggregate queries (e.g. GROUP BY category) carry no
+    # geoid, so fall back to any place named in the question itself.
+    highlights = [r["geoid"] for r in rows if r.get("geoid")]
+    if not highlights:
+        highlights = _place_geoids(question)
+
     return {
         "answer": answer,
-        "highlight_geoids": [r["geoid"] for r in rows if r.get("geoid")],
+        "highlight_geoids": highlights,
         "table": _table,
         "table_headers": _headers,
         "rows": rows,
@@ -327,6 +333,20 @@ def _to_label_value(rows):
             header["value"] = text_cols[1].replace("_", " ").capitalize()
 
     return out, header
+
+
+PLACES = {
+    "fenton village": ["24031702502", "24031702503", "24031702501", "24031702402"],
+}
+
+
+def _place_geoids(question: str):
+    """Resolve a place named in the question to its tracts."""
+    q = question.lower()
+    for name, geoids in PLACES.items():
+        if name in q:
+            return geoids
+    return []
 
 
 def _sources(rows):

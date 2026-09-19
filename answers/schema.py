@@ -62,6 +62,17 @@ DATA QUIRKS YOU MUST HANDLE
   with that filter applied, not just the highest values.
 - Some columns are NULL for some tracts. Filter with IS NOT NULL when ranking.
 
+HOW TO ANSWER BUSINESS QUESTIONS
+- "What businesses are in X?" / "What kinds of businesses..." / "What is the
+  business mix?"  ->  AGGREGATE BY CATEGORY. Use
+    SELECT category, COUNT(*) AS business_count, MIN(source_url) AS source_url
+    FROM businesses WHERE geoid IN (...) GROUP BY category
+    ORDER BY business_count DESC
+  Do NOT list individual business names — the character of a district is its
+  mix of categories, not a roll call of shops.
+- Only list individual businesses when the user explicitly asks to name them
+  ("which restaurants", "list the cafes", "what is X called").
+
 RULES FOR WRITING SQL
 - SELECT statements only. Never INSERT, UPDATE, DELETE, DROP, ALTER, PRAGMA.
 - ALWAYS include source_url in the columns you select, so answers can cite.
