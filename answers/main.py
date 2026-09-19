@@ -383,9 +383,8 @@ def _to_label_value(rows):
     return out, header
 
 
-PLACES = {
-    "fenton village": ["24031702502", "24031702503", "24031702501", "24031702402"],
-}
+# Place names used to live in a dict here, which meant exactly one
+# neighbourhood could be asked about. They live in the database now.
 
 # Silver Spring is the place this product is about. The database covers the
 # whole county so we can say "compared to the county" with real numbers, but
@@ -422,12 +421,27 @@ def _sql_geoids(sql: str):
 
 
 def _place_geoids(question: str):
-    """Resolve a place named in the question to its tracts."""
+    """
+    Resolve a place named in the question to its tracts.
+
+    Only a fallback for highlighting: if the model aggregated and returned no
+    geoid column, the map would otherwise sit still. Longest name first so
+    "Woodside Park" doesn't get answered by "Woodside".
+    """
     q = question.lower()
-    for name, geoids in PLACES.items():
-        if name in q:
-            return geoids
-    return []
+    try:
+        conn = sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)
+        rows = conn.execute(
+            "SELECT name, geoid FROM places ORDER BY LENGTH(name) DESC"
+        ).fetchall()
+        conn.close()
+    except sqlite3.Error:
+        return []
+
+    match = next((name.lower() for name, _ in rows if name.lower() in q), None)
+    if match is None:
+        return []
+    return [geoid for name, geoid in rows if name.lower() == match]
 
 
 # Every stored column traces back to one specific published table. Naming the
@@ -515,6 +529,9 @@ def _sources(sql: str, geoids):
         add(*TIGER_SOURCE)
     if "businesses" in text:
         add(*OSM_SOURCE)
+    if " places" in text or "places " in text:
+        add("OpenStreetMap named places, resolved to census tracts",
+            "https://www.openstreetmap.org/copyright")
 
     if not out:
         # Nothing recognizable in the SQL - cite the population table for

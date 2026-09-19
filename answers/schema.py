@@ -46,6 +46,18 @@ TABLE data_sources  -- provenance for each dataset
   dataset_id, dataset_name, publisher, source_url,
   geographic_coverage, data_vintage, retrieved_at, coverage_note
 
+TABLE places
+  place_id     INTEGER  primary key
+  name         TEXT     e.g. 'Woodside', 'Lyttonsville', 'Fenton Village'
+  kind         TEXT     'neighbourhood', 'suburb', 'district', 'locality'...
+  geoid        TEXT     the tract this place sits in; join to tract_data
+  latitude     REAL     place point (NULL for districts)
+  longitude    REAL
+  precision    TEXT     how the tract was assigned
+  source_name  TEXT     'OpenStreetMap' or 'Montgomery County Planning...'
+  source_url   TEXT
+  63 named places across Silver Spring, 84 rows (a place can span tracts).
+
 IMPORTANT CONTEXT — WHAT "HERE" MEANS
 This product is about SILVER SPRING, Maryland. The database covers the whole
 of Montgomery County so that county comparisons are possible, but Silver
@@ -63,9 +75,26 @@ Spring is the subject.
   geoids. Do NOT silently answer for the whole county — the user is looking
   at a map of Silver Spring, and a county number next to it is wrong.
 
-- FENTON VILLAGE is a business district inside Silver Spring, spanning four
-  of those tracts: '24031702502','24031702503','24031702501','24031702402'.
-  When a question mentions Fenton Village, filter to those four.
+- NEIGHBOURHOODS AND DISTRICTS live in the `places` table. Do not guess a
+  place's tracts and do not refuse a named place before checking it. Join:
+
+    SELECT ... FROM tract_data t
+    JOIN places p ON p.geoid = t.geoid
+    WHERE LOWER(p.name) = LOWER('Woodside')
+
+  Match names case-insensitively, and allow a LIKE match when the user's
+  wording is close ("Fenton" for "Fenton Village"). A place can map to more
+  than one tract, so aggregate across them.
+
+  places.kind = 'district' means a downtown planning district (Fenton
+  Village, Ellsworth, Ripley District, Metro Center, Downtown North, South
+  Silver Spring, Falklands). These have no published boundary of their own
+  and resolve to the four downtown tracts, so several of them return the
+  same numbers. That is honest, not a bug - say the figures cover downtown
+  Silver Spring, the finest level the Census publishes.
+
+  places.kind = anything else came from OpenStreetMap and is located in the
+  single tract containing that place's point.
 
 - MONTGOMERY COUNTY (all 232 tracts, no geoid filter) is for EXPLICIT
   comparisons only — when the question says "county", "countywide",
@@ -73,9 +102,9 @@ Spring is the subject.
   compare, return BOTH numbers in the same result so the difference is
   visible, e.g. one row for Silver Spring and one for the county.
 
-- If the question names a place that is not Silver Spring, Fenton Village or
-  Montgomery County, you cannot resolve it — there are no neighborhood names
-  in this database, only tract codes. Reply with CANNOT_ANSWER.
+- If a named place is not in `places` and is not Silver Spring, Fenton
+  Village or Montgomery County, say so rather than guessing at tracts.
+  Reply with CANNOT_ANSWER.
 
 DATA QUIRKS YOU MUST HANDLE
 - median_income is TOP-CODED at 250001. That is not a real income; it is the
@@ -97,6 +126,9 @@ HOW TO ANSWER BUSINESS QUESTIONS
   ("which restaurants", "list the cafes", "what is X called").
 
 RULES FOR WRITING SQL
+- When a question is about a named place, SELECT the geoid column too. The
+  map highlights whatever geoids come back, so an answer without them
+  leaves the map showing nothing.
 - SELECT statements only. Never INSERT, UPDATE, DELETE, DROP, ALTER, PRAGMA.
 - ALWAYS include source_url in the columns you select, so answers can cite.
 - Never select geometry_geojson; it is huge and not useful in an answer.
@@ -112,7 +144,8 @@ COVERAGE_BLURB = (
     "I can answer questions about Silver Spring, Maryland — population, "
     "household income, foreign-born residents, languages spoken at home, "
     "housing, commuting, and 455 local businesses, including the Fenton "
-    "Village district. I can also compare Silver Spring with the rest of "
+    "Village district and 60-odd named neighbourhoods. I can also compare "
+    "Silver Spring with the rest of "
     "Montgomery County. I don't have data on other named neighborhoods, "
     "only census tracts."
 )
