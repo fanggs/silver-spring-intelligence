@@ -7,3 +7,15 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
+
+  # The map itself. Plain files, no build step - the page calls the API above
+  # at the absolute URL in page/script.js, and the API allows any origin.
+  - type: web
+    name: civiclens
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: ./page
+    routes:
+      - type: rewrite
+        source: /
+        destination: /index.html
