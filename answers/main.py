@@ -84,12 +84,14 @@ def index():
     return {
         "service": "CivicLens API",
         "what": "Queryable public community data for Montgomery County, Maryland "
-                "(which contains Silver Spring). 232 census tracts, 5,953 businesses.",
+                "Silver Spring, Maryland — 19 census tracts, 81,727 residents, "
+                "455 businesses. Montgomery County's 232 tracts are in the "
+                "database too, so Silver Spring can be compared against them.",
         "endpoints": {
             "GET  /health": "service + database status",
-            "GET  /tracts": "all 232 census tract boundaries as GeoJSON",
+            "GET  /tracts": "Silver Spring's 19 tract boundaries as GeoJSON (?scope=county for all 232)",
             "GET  /boundary": "the Silver Spring CDP outline as GeoJSON",
-            "GET  /businesses": "business locations with category and coordinates",
+            "GET  /businesses": "Silver Spring business locations (?scope=county for all 5,953)",
             "POST /ask": "ask a question in plain English -> answer, sources, and the SQL we ran",
             "GET  /docs": "interactive API explorer",
         },
@@ -106,26 +108,53 @@ def health():
     """Alive check, plus a quick look at whether the database is present."""
     try:
         conn = sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)
+        placeholders = ",".join("?" * len(SILVER_SPRING_GEOIDS))
+        args = tuple(SILVER_SPRING_GEOIDS)
         tracts = conn.execute("SELECT COUNT(*) FROM tract_data").fetchone()[0]
         biz = conn.execute("SELECT COUNT(*) FROM businesses").fetchone()[0]
+        ss_tracts = conn.execute(
+            f"SELECT COUNT(*) FROM tract_data WHERE geoid IN ({placeholders})", args
+        ).fetchone()[0]
+        ss_biz = conn.execute(
+            f"SELECT COUNT(*) FROM businesses WHERE geoid IN ({placeholders})", args
+        ).fetchone()[0]
         conn.close()
-        return {"ok": True, "tracts": tracts, "businesses": biz}
+        return {
+            "ok": True,
+            "silver_spring": {"tracts": ss_tracts, "businesses": ss_biz},
+            "county": {"tracts": tracts, "businesses": biz},
+        }
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
 
-@app.get("/tracts")
-def tracts():
+def _scope_clause(scope: str):
     """
-    Every tract boundary as GeoJSON, for the map to draw.
+    Silver Spring is what the map is for, so it is the default everywhere.
+    ?scope=county opens the rest of the county up for comparison work.
+    """
+    if scope == "county":
+        return "", ()
+    placeholders = ",".join("?" * len(SILVER_SPRING_GEOIDS))
+    return f" AND geoid IN ({placeholders})", tuple(SILVER_SPRING_GEOIDS)
+
+
+@app.get("/tracts")
+def tracts(scope: str = "silver-spring"):
+    """
+    Tract boundaries as GeoJSON, for the map to draw. Silver Spring only by
+    default — drawing all 232 county tracts put a second, bigger outline
+    around a map that is supposed to be about one town.
     Geometry only plus a few display values — no AI involved.
     """
+    clause, args = _scope_clause(scope)
     conn = sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         """SELECT geoid, tract_name, geometry_geojson, population_count,
                   median_income, foreign_born_count, source_url
-           FROM tract_data WHERE geometry_geojson IS NOT NULL"""
+           FROM tract_data WHERE geometry_geojson IS NOT NULL""" + clause,
+        args,
     ).fetchall()
     conn.close()
 
@@ -157,17 +186,18 @@ def boundary():
 
 
 @app.get("/businesses")
-def businesses(limit: int = 6000):
-    """Business points for the map pins."""
+def businesses(limit: int = 6000, scope: str = "silver-spring"):
+    """Business points for the map pins. Silver Spring only by default."""
+    clause, args = _scope_clause(scope)
     conn = sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         """SELECT business_id, name, category, latitude, longitude,
                   geoid, source_name, source_url
            FROM businesses
-           WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-           LIMIT ?""",
-        (limit,),
+           WHERE latitude IS NOT NULL AND longitude IS NOT NULL""" + clause +
+        " LIMIT ?",
+        args + (limit,),
     ).fetchall()
     conn.close()
     # Returns a plain array so the map can iterate it directly.
