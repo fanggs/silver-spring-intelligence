@@ -316,3 +316,7 @@ html{scroll-behavior:auto;}
     font-size: 12px;
     color: #2d3b33;
 }
+
+/* The business dots sit in a pane above the tracts so they are never hidden,
+   but the map handles the clicks, so the canvas must not intercept them. */
+.leaflet-business-pane { pointer-events: none; }

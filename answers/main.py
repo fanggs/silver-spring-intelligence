@@ -293,6 +293,26 @@ def ask(q: Question):
 
 # ---------------------------------------------------------------- helpers
 
+_PLACE_NAME_CACHE = {}
+
+
+def _place_names_by_geoid():
+    """geoid -> the names people actually use for it, districts first."""
+    if _PLACE_NAME_CACHE:
+        return _PLACE_NAME_CACHE
+    try:
+        conn = sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)
+        for geoid, name in conn.execute(
+            """SELECT geoid, name FROM places
+               ORDER BY CASE WHEN kind = 'district' THEN 0 ELSE 1 END, name"""
+        ):
+            _PLACE_NAME_CACHE.setdefault(geoid, []).append(name)
+        conn.close()
+    except sqlite3.Error:
+        pass
+    return _PLACE_NAME_CACHE
+
+
 def _to_label_value(rows):
     """
     Turn raw query rows into readable {label, value} pairs.
@@ -334,6 +354,8 @@ def _to_label_value(rows):
             return f"{v:,.1f}"
         return f"{v:,}"
 
+    place_names = _place_names_by_geoid()
+
     out = []
     header = {"label": "Result", "value": "Value"}
     for r in rows:
@@ -350,6 +372,12 @@ def _to_label_value(rows):
                     spare_text = v                       # e.g. a business category
             elif value is None and isinstance(v, (int, float)) and not isinstance(v, bool):
                 value = phrase(k, v)
+        # "Census Tract 7019" is not an answer to "where are the cheapest
+        # homes". Say the neighbourhood and keep the tract as the footnote.
+        names = place_names.get(str(r.get("geoid") or ""))
+        if names:
+            label = " · ".join(names[:2])
+
         # A business row has no meaningful number — its category is the value.
         if value is None and spare_text:
             value = spare_text

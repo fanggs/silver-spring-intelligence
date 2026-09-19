@@ -57,6 +57,8 @@ function initAppPage() {
     let legendControl = null;
     let businessPoints = [];
     const placeNamesByGeoid = new Map();
+    const tractPropsByGeoid = new Map();
+    const tractGeometryByGeoid = new Map();
     let highlightScope = "selection";
     let demoMode = false;
 
@@ -243,6 +245,81 @@ function initAppPage() {
         }
     }
 
+    // How close a click has to land on a dot to count as clicking it. A
+    // 6px dot is a small target, so we allow a little slack.
+    const DOT_HIT_RADIUS = 11;
+
+    function pointInRing(x, y, ring) {
+        let inside = false;
+        for (let i = 0, n = ring.length, j = n - 1; i < n; j = i++) {
+            const [x1, y1] = ring[i];
+            const [x2, y2] = ring[j];
+            if ((y1 > y) !== (y2 > y) && x < ((x2 - x1) * (y - y1)) / (y2 - y1) + x1) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    function pointInGeometry(lng, lat, geom) {
+        if (!geom) return false;
+        const polys = geom.type === "MultiPolygon" ? geom.coordinates : [geom.coordinates];
+        return polys.some((poly) =>
+            pointInRing(lng, lat, poly[0]) &&
+            !poly.slice(1).some((hole) => pointInRing(lng, lat, hole))
+        );
+    }
+
+    function nearestBusiness(latlng) {
+        if (!businessPoints.length) return null;
+        const origin = map.latLngToContainerPoint(latlng);
+        let best = null;
+        let bestDistance = DOT_HIT_RADIUS;
+        businessPoints.forEach((b) => {
+            const p = map.latLngToContainerPoint([b.lat, b.lng]);
+            const d = Math.hypot(p.x - origin.x, p.y - origin.y);
+            if (d <= bestDistance) {
+                bestDistance = d;
+                best = b;
+            }
+        });
+        return best;
+    }
+
+    function tractAt(latlng) {
+        for (const [geoid, geom] of tractGeometryByGeoid) {
+            if (pointInGeometry(latlng.lng, latlng.lat, geom)) return geoid;
+        }
+        return null;
+    }
+
+    function handleMapClick(event) {
+        const business = nearestBusiness(event.latlng);
+        if (business) {
+            L.popup()
+                .setLatLng([business.lat, business.lng])
+                .setContent(businessPopupContent(business.point, business.group))
+                .openOn(map);
+            return;
+        }
+
+        const geoid = tractAt(event.latlng);
+        if (!geoid) return;
+
+        // Clicking an area selects it, the same as an answer highlighting it,
+        // so the map is explorable without asking a question first.
+        activeGeoids = new Set([geoid]);
+        highlightScope = "selection";
+        updateHighlights({ keepView: true });
+        refreshLegendForSelection();
+
+        L.popup()
+            .setLatLng(event.latlng)
+            .setContent(tractPopupContent(geoid, tractPropsByGeoid.get(geoid) || {}))
+            .openOn(map);
+    }
+
+
     function baseTractStyle() {
         return {
             color: "#40634b",
@@ -252,8 +329,9 @@ function initAppPage() {
         };
     }
 
-    function updateHighlights() {
+    function updateHighlights(options) {
         if (!map) return;
+        const keepView = Boolean(options && options.keepView);
 
         const selectedLayers = [];
 
@@ -285,6 +363,8 @@ function initAppPage() {
                 }
             });
         });
+
+        if (keepView) return;
 
         if (selectedLayers.length && highlightScope !== "area") {
             const bounds = L.featureGroup(selectedLayers).getBounds();
@@ -343,6 +423,10 @@ function initAppPage() {
 
         tractLayer = L.geoJSON(geojson, {
             style: baseTractStyle,
+            // Clicks are handled once, on the map. Letting each layer claim
+            // its own means whichever happens to be on top wins, and the
+            // business dots sit on top of every tract.
+            interactive: false,
 
             onEachFeature(feature, layer) {
                 const geoid = feature.properties?.geoid;
@@ -359,6 +443,21 @@ function initAppPage() {
                 // "Census Tract 7025.01" means nothing to someone standing in
                 // it. Lead with what the place is called and keep the tract as
                 // the reference, which is what the figures are published for.
+                const tractLabel = String(props.tract_name || "Census tract").split(";")[0].trim();
+
+                tractPropsByGeoid.set(id, props);
+                tractGeometryByGeoid.set(id, feature.geometry);
+
+
+            }
+        }).addTo(map);
+
+        updateHighlights();
+    }
+
+
+    function tractPopupContent(id, props) {
+                const placeNames = Array.isArray(props.place_names) ? props.place_names : [];
                 const tractLabel = String(props.tract_name || "Census tract").split(";")[0].trim();
 
                 const popup = document.createElement("div");
@@ -395,11 +494,7 @@ function initAppPage() {
                 code.textContent = placeNames.length ? tractLabel : `GEOID ${id}`;
                 popup.append(code);
 
-                layer.bindPopup(popup);
-            }
-        }).addTo(map);
-
-        updateHighlights();
+                return popup;
     }
 
     // 91 raw OpenStreetMap categories is too many to colour individually, so
@@ -551,7 +646,7 @@ function initAppPage() {
             const pin = L.circleMarker([latitude, longitude], {
                 renderer: canvas,
                 pane: "businessPane",
-                bubblingMouseEvents: false,
+                interactive: false,
                 radius: 6,
                 color: "#ffffff",
                 weight: 1.5,
@@ -559,6 +654,24 @@ function initAppPage() {
                 fillOpacity: 0.95
             });
 
+            pin.addTo(businessLayer);
+            businessPoints.push({
+                geoid: String(point?.geoid ?? ""),
+                key: group.key,
+                category: String(point?.category || "uncategorised"),
+                lat: latitude,
+                lng: longitude,
+                point,
+                group
+            });
+            drawn += 1;
+        });
+
+        refreshLegendForSelection();
+    }
+
+
+    function businessPopupContent(point, group) {
             const popup = document.createElement("div");
             const title = document.createElement("strong");
             title.textContent = String(point.name || "Business");
@@ -579,17 +692,7 @@ function initAppPage() {
                 : "Silver Spring, Maryland";
 
             popup.append(title, category, where);
-            pin.bindPopup(popup);
-            pin.addTo(businessLayer);
-            businessPoints.push({
-                geoid: String(point?.geoid ?? ""),
-                key: group.key,
-                category: String(point?.category || "uncategorised")
-            });
-            drawn += 1;
-        });
-
-        refreshLegendForSelection();
+            return popup;
     }
 
     function initMap() {
@@ -611,6 +714,8 @@ function initAppPage() {
         // Their own pane keeps the dots on top and clickable.
         map.createPane("businessPane");
         map.getPane("businessPane").style.zIndex = 450;
+
+        map.on("click", handleMapClick);
 
         watchMapSize();
 
