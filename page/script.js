@@ -16,6 +16,12 @@ const navLinks =
     );
 
 
+const sourceCards =
+    document.querySelectorAll(
+        ".source-card"
+    );
+
+
 /*
     Small movement effect
     inside the geographic hero.
@@ -109,6 +115,20 @@ navLinks.forEach(
 
             }
         );
+
+    }
+);
+
+
+/*
+    Make the source rows keyboard
+    focusable for later interaction.
+*/
+
+sourceCards.forEach(
+    function(card) {
+
+        card.tabIndex = 0;
 
     }
 );
