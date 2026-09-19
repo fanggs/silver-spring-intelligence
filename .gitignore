@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# PyCharm / JetBrains project settings (personal, not shared)
+.idea/
