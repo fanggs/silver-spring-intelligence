@@ -455,12 +455,28 @@ function initAppPage() {
             : businessPoints;
 
         const counts = {};
-        points.forEach((p) => { counts[p.key] = (counts[p.key] || 0) + 1; });
-        drawBusinessLegend(counts, points.length, scoped);
+        const detail = {};
+        points.forEach((p) => {
+            counts[p.key] = (counts[p.key] || 0) + 1;
+            detail[p.key] = detail[p.key] || {};
+            detail[p.key][p.category] = (detail[p.key][p.category] || 0) + 1;
+        });
+        drawBusinessLegend(counts, points.length, scoped, detail);
     }
 
 
-    function drawBusinessLegend(counts, total, scoped) {
+    function describeGroup(breakdown) {
+        // "Food & drink: 38" next to an answer saying "34 restaurants" reads
+        // like a contradiction until you can see the bucket's contents.
+        if (!breakdown) return "";
+        return Object.entries(breakdown)
+            .sort((a, b) => b[1] - a[1])
+            .map(([name, n]) => `${name} ${n}`)
+            .join(", ");
+    }
+
+
+    function drawBusinessLegend(counts, total, scoped, detail) {
         if (!map) return;
         if (legendControl) map.removeControl(legendControl);
 
@@ -475,6 +491,8 @@ function initAppPage() {
                 const n = counts[g.key] || 0;
                 if (!n) return;
                 const row = L.DomUtil.create("div", "map-legend-row", box);
+                const inside = describeGroup(detail && detail[g.key]);
+                if (inside) row.title = inside;
 
                 const dot = L.DomUtil.create("span", "map-legend-dot", row);
                 dot.style.background = g.color;
@@ -516,7 +534,7 @@ function initAppPage() {
 
         if (businessLayer) map.removeLayer(businessLayer);
         businessLayer = L.layerGroup().addTo(map);
-        const canvas = L.canvas();
+        const canvas = L.canvas({ pane: "businessPane" });
         const counts = {};
         let drawn = 0;
         businessPoints = [];
@@ -532,7 +550,9 @@ function initAppPage() {
 
             const pin = L.circleMarker([latitude, longitude], {
                 renderer: canvas,
-                radius: 5,
+                pane: "businessPane",
+                bubblingMouseEvents: false,
+                radius: 6,
                 color: "#ffffff",
                 weight: 1.5,
                 fillColor: group.color,
@@ -561,11 +581,15 @@ function initAppPage() {
             popup.append(title, category, where);
             pin.bindPopup(popup);
             pin.addTo(businessLayer);
-            businessPoints.push({ geoid: String(point?.geoid ?? ""), key: group.key });
+            businessPoints.push({
+                geoid: String(point?.geoid ?? ""),
+                key: group.key,
+                category: String(point?.category || "uncategorised")
+            });
             drawn += 1;
         });
 
-        drawBusinessLegend(counts, drawn);
+        refreshLegendForSelection();
     }
 
     function initMap() {
@@ -581,6 +605,12 @@ function initAppPage() {
         // a judge will do first. The +/- buttons and double-click still zoom.
         map = L.map("map", { scrollWheelZoom: false })
             .setView([38.9907, -77.0261], 12);
+
+        // Highlighted tracts call bringToFront(), which would otherwise lift
+        // the polygon over the business dots and swallow every click on them.
+        // Their own pane keeps the dots on top and clickable.
+        map.createPane("businessPane");
+        map.getPane("businessPane").style.zIndex = 450;
 
         watchMapSize();
 
