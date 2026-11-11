@@ -96,6 +96,9 @@ HOW TO ANSWER "WHAT'S CHANGING?"
     FROM tract_history
     WHERE geoid IN (<the tracts in scope>)
     GROUP BY acs_vintage ORDER BY acs_vintage
+- For a general question about changes, compare two measures. If no topic is
+  named, select population and public transit commute share only, with
+  transit counts and denominators as supporting values.
 - The two windows are 2016-2020 and 2020-2024. Say the windows, not "2020"
   and "2024" - a 5-year estimate is an average over its window.
 - median_income is in the dollars of its own period and is NOT inflation
@@ -191,13 +194,12 @@ HOW TO ANSWER BUSINESS QUESTIONS
   Restaurants are osm_amenity='restaurant'. A request for
   food and drink broadly can use category_group='food and drink', with a breakdown
   by category. Do not silently include cafes, bars, pubs or fast food in restaurant counts.
-- For a business decision, query the requested business type directly before
-  using surrounding business mix. Bookstores are osm_shop='books' (which also
-  includes specialty book shops). Use COUNT(*) and the matching names, e.g.
-  GROUP_CONCAT(name, ', '), to show the direct evidence. Return only the target
-  category and any specific complementary evidence that is actually relevant.
-  A limited list of top categories never proves a type is absent. Mapped businesses
-  do not establish foot traffic, demand, or whether a business is still operating.
+- For a business decision, use the requested business type as the filter.
+  Coffee shops are osm_amenity='cafe'. Bookstores are osm_shop='books' (which
+  also includes specialty book shops). Return the matching count and names,
+  e.g. COUNT(*) and GROUP_CONCAT(name, ', '). Include another category or
+  measure only if the question asks for it. A limited list of top categories
+  never proves a type is absent.
 - Counts reflect mapped OpenStreetMap listings, not a complete operating-business
   registry. Listings alone do not verify opening status, foot traffic, or demand.
 - For broad mix, group by category. For an event planning question, gather any
@@ -206,8 +208,9 @@ HOW TO ANSWER BUSINESS QUESTIONS
 
 RULES FOR WRITING SQL
 - HOUSING AFFORDABILITY: there is no rent or house-price column. Answer with
-  median_income (excluding the 250001 top-code) plus the renter share, and
-  say which measure you used. Do not refuse the question.
+  median_income (excluding the 250001 top-code) plus the renter share for
+  context. Return at most three tracts with the lowest median income. Income
+  and renter share cannot establish where housing costs the least.
 - Return geoids for individual rows or geographic comparisons. For totals
   across a named area, do not group by geoid. The map can use the place name.
 - SELECT statements only. Never INSERT, UPDATE, DELETE, DROP, ALTER, PRAGMA.

@@ -146,6 +146,9 @@ class DataQualityTests(unittest.TestCase):
         self.assertTrue(response["notes"])
         self.assertNotIn(response["notes"][0], response["summary"])
         self.assertIn(response["notes"][0], response["answer"])
+        self.assertEqual(response["visual"]["scale_max"], 100)
+        self.assertEqual(response["visual"]["items"][0]["display"], f"{raw_rate:.1f}%")
+        self.assertIn(f"{raw_rate:.1f}%", response["supporting_data"]["rows"][0])
 
     @patch.object(main, "_ask_claude")
     def test_grouped_business_counts_answer_directly_from_query_rows(self, model):
@@ -155,6 +158,9 @@ class DataQualityTests(unittest.TestCase):
         response = main.ask(main.Question(question="How many cafés and bars are mapped around Fenton Village?"))
         self.assertIn("8 café listings", response["summary"])
         self.assertIn("5 bar listings", response["summary"])
+        self.assertEqual({point["label"]: point["value"] for point in response["visual"]["items"]},
+                         {"Bar": 5, "Café": 8})
+        self.assertIsNone(response["next_step"])
         self.assertEqual(model.call_count, 1)
 
     @patch.object(main, "_ask_claude", return_value=CASES["q3-female-residents"])
@@ -163,4 +169,24 @@ class DataQualityTests(unittest.TestCase):
         self.assertIn("41,406", response["summary"])
         self.assertIn("classified as female", response["summary"])
         self.assertIn("does not measure self-identified gender", " ".join(response["notes"]))
+        self.assertIsNone(response["visual"])
+        self.assertIsNone(response["next_step"])
+        self.assertIn("1,495", response["supporting_data"]["rows"][0])
         self.assertEqual(model.call_count, 1)
+
+    def test_decision_separates_the_next_step_and_rejects_unsupported_figures(self):
+        question = main.Question(question=QUESTIONS["q1-bookstore"])
+        assessment = "Worth exploring. There are 2 mapped book shops in the area."
+        with patch.object(main, "_ask_claude", side_effect=[CASES["q1-bookstore"],
+                "There are 99,999 mapped book shops.",
+                assessment + "\nNext step: Ask local readers what they would buy."]):
+            response = main.ask(question)
+        self.assertEqual(response["summary"], assessment)
+        self.assertEqual(response["next_step"], "Ask local readers what they would buy.")
+        self.assertIn(response["next_step"], response["answer"])
+        self.assertIsNone(response["visual"])
+        with patch.object(main, "_ask_claude", side_effect=[CASES["q1-bookstore"],
+                assessment + "\nNext step: This area has 99,999 potential customers."]):
+            response = main.ask(question)
+        self.assertEqual(response["summary"], assessment)
+        self.assertIsNone(response["next_step"])

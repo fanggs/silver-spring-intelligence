@@ -42,6 +42,13 @@ function initAppPage() {
         result: element("answerResult"),
         answer: element("answerText"),
         notes: element("answerNotes"),
+        visual: element("answerVisual"),
+        visualTitle: element("answerVisualTitle"),
+        visualItems: element("answerVisualItems"),
+        action: element("answerAction"),
+        nextStep: element("answerNextStep"),
+        details: element("answerDetails"),
+        heads: element("supportHeads"),
         sources: element("sourceList"),
         rows: element("supportRows"),
         layerStatus: element("layerStatus"),
@@ -175,7 +182,6 @@ function initAppPage() {
             ? payload.notes.filter((note) => typeof note === "string").join(" ")
             : "";
         const highlights = Array.isArray(payload?.highlight_geoids) ? payload.highlight_geoids : [];
-        const table = Array.isArray(payload?.table) ? payload.table : [];
         const sources = Array.isArray(payload?.sources) ? payload.sources : [];
 
         activeGeoids = new Set(highlights.map(String));
@@ -196,6 +202,11 @@ function initAppPage() {
         ui.answer.textContent = answer;
         ui.notes.textContent = notes;
         ui.notes.hidden = !notes;
+        ui.nextStep.textContent = typeof payload?.next_step === "string" ? payload.next_step.trim() : "";
+        ui.action.hidden = !ui.nextStep.textContent;
+        ui.details.open = false;
+        renderVisual(payload?.visual);
+        renderSupportingData(payload);
         ui.sources.replaceChildren();
 
         sources.forEach((source) => {
@@ -218,19 +229,21 @@ function initAppPage() {
             ui.sources.appendChild(item);
         }
 
-        // Name the columns after what this particular answer returned.
-        const heads = payload.table_headers || {};
-        const labelHead = document.getElementById("supportLabelHead");
-        const valueHead = document.getElementById("supportValueHead");
-        if (labelHead) labelHead.textContent = heads.label || "Result";
-        if (valueHead) valueHead.textContent = heads.value || "Value";
+    }
 
+    function renderSupportingData(payload) {
+        const supporting = payload.supporting_data;
+        const legacy = Array.isArray(payload.table) ? payload.table : [];
+        const columns = Array.isArray(supporting?.columns) && supporting.columns.length
+            ? supporting.columns : [payload.table_headers?.label || "Result", payload.table_headers?.value || "Value"];
+        const rows = Array.isArray(supporting?.rows) ? supporting.rows : legacy.map((row) => [row.label, row.value]);
+        ui.heads.replaceChildren();
         ui.rows.replaceChildren();
         const raw = document.getElementById("rawResultsTable");
         const full = document.getElementById("fullResults");
         if (raw && full) {
             raw.replaceChildren();
-            const records = Array.isArray(payload.rows) ? payload.rows : [];
+            const records = !supporting && Array.isArray(payload.rows) ? payload.rows : [];
             const fields = [...new Set(records.flatMap(row => Object.keys(row)))];
             full.hidden = !records.length;
             full.open = false;
@@ -258,34 +271,57 @@ function initAppPage() {
             raw.append(body);
         }
 
-        table.forEach((row) => {
-            if (!row || typeof row !== "object") return;
-
+        columns.forEach((column) => {
+            const th = document.createElement("th");
+            th.scope = "col";
+            th.textContent = String(column);
+            ui.heads.appendChild(th);
+        });
+        rows.forEach((values) => {
+            if (!Array.isArray(values)) return;
             const tr = document.createElement("tr");
-            // Both cells are <td> so the columns line up — a <th> row header
-            // picks up different default padding and weight.
-            const label = document.createElement("td");
-            label.className = "support-label";
-            label.textContent = String(row.label ?? "—");
-
-            const value = document.createElement("td");
-            value.textContent =
-                row.value === null || row.value === undefined
-                    ? "Not available"
-                    : String(row.value);
-
-            tr.append(label, value);
+            columns.forEach((_, index) => {
+                const td = document.createElement("td");
+                td.textContent = String(values[index] ?? "Not available");
+                tr.appendChild(td);
+            });
             ui.rows.appendChild(tr);
         });
-
         if (!ui.rows.children.length) {
             const tr = document.createElement("tr");
             const td = document.createElement("td");
-            td.colSpan = 2;
-            td.textContent = "No supporting rows were returned.";
+            td.colSpan = columns.length;
+            td.textContent = "No supporting values were returned.";
             tr.appendChild(td);
             ui.rows.appendChild(tr);
         }
+    }
+
+    function renderVisual(visual) {
+        const items = visual?.items;
+        const max = visual?.scale_max;
+        const usable = Array.isArray(items) && items.length >= 2 && Number.isFinite(max) && max > 0
+            && items.every((item) => Number.isFinite(item.value) && item.value >= 0 && item.value <= max);
+        ui.visual.hidden = !usable;
+        ui.visualItems.replaceChildren();
+        if (!usable) return;
+        ui.visualTitle.textContent = String(visual.title);
+        items.forEach((item) => {
+            const li = document.createElement("li");
+            const label = document.createElement("span");
+            label.textContent = String(item.label);
+            const value = document.createElement("strong");
+            value.textContent = String(item.display);
+            const track = document.createElement("div");
+            track.className = "answer-bar-track";
+            track.setAttribute("aria-hidden", "true");
+            const fill = document.createElement("div");
+            fill.className = "answer-bar-fill";
+            fill.style.width = `${100 * item.value / max}%`;
+            track.appendChild(fill);
+            li.append(label, value, track);
+            ui.visualItems.appendChild(li);
+        });
     }
 
     // How close a click has to land on a dot to count as clicking it. A

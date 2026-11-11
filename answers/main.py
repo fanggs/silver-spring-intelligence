@@ -11,6 +11,7 @@ invents a figure, which is what makes every answer traceable to a source.
 from __future__ import annotations
 
 import json
+import math
 import re
 import os
 import sqlite3
@@ -272,14 +273,24 @@ def ask(q: Question):
 
     notes = _answer_notes(executed_sql, rows, question)
 
-    # Round rates for display before passing them to the model. Keep the raw
-    # query rows in the response so the underlying estimates remain inspectable.
-    display_rows = [
-        {column: round(value, 1) if isinstance(value, float) and _is_percentage(column) else value
-         for column, value in row.items()}
-        for row in rows[:25]
-    ]
-    summary = _business_counts(question, executed_sql, rows)
+    # Pass display precision to the model while keeping the raw query values.
+    display_rows = []
+    for row in rows[:25]:
+        display_row = dict(row)
+        for column, value in row.items():
+            if isinstance(value, float):
+                if _is_percentage(column):
+                    display_row[column] = round(value, 1)
+                elif "income" in column:
+                    display_row[column] = round(value)
+        display_rows.append(display_row)
+    listing_counts = _grouped_business_counts(question, executed_sql, rows)
+    summary = None
+    next_step = None
+    if listing_counts:
+        items = [f"{count:,} {label} listings" for label, count in listing_counts]
+        totals = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+        summary = f"OpenStreetMap shows {totals} in the selected area."
     if summary is None:
         summary = _place_count(question, executed_sql, rows)
     if summary is None:
@@ -288,22 +299,49 @@ def ask(q: Question):
             f"These rows came back from the database:\n"
             f"{json.dumps(display_rows, indent=2)}\n\n"
             f"Notes displayed separately: {' '.join(notes)}\n\n"
-            "Lead with the direct answer. For lookups and trends, use one short sentence "
-            "with the requested totals or rates. Omit lists of names and extra figures "
-            "unless requested. For planning questions, use up to three short sentences "
-            "that separate evidence from a next step. Keep planning answers under 55 words. "
-            "Do not infer demand, foot traffic or interest from counts. Do not repeat the notes "
+            "Lead with the direct answer in everyday language. For a lookup or trend, use one "
+            "short sentence with the requested totals or rates. Keep names, margins of error, "
+            "and extra numbers in the supporting data unless asked for them. "
+            "If a measure is missing, say what is missing before any related fact. "
+            "For a decision or planning question, give a brief assessment with the strongest "
+            "relevant finding and the key unknown. Then add a separate line starting with "
+            "'Next step:' followed by one specific, doable action that helps resolve that unknown. "
+            "Say who to contact or where to look, what to ask or observe, and how it helps decide. "
+            "For example, if demand is unknown, name a specific thing to ask potential customers. "
+            "If planning an event, give the organizer a specific question to ask prospective "
+            "attendees that will help choose the topic, venue, or format. Avoid generic advice "
+            "like 'do market research' and avoid assuming the user can get private sales data. "
+            "Do not add a next step to an ordinary lookup. Use plain text, under 55 words total. "
+            "For a business idea, discuss only the requested business type unless the user asks "
+            "about related types. Give the mapped count and leave any rating of competition "
+            "out unless the results include a meaningful benchmark. Describe map results "
+            "as mapped listings. Counts alone cannot establish demand, "
+            "foot traffic, event interest, or whether a business is open. Income and renter share "
+            "do not establish housing prices. Put boundary and source caveats only in the separate notes. "
+            "Do not restate them "
             "or claim statistical significance unless the query tested it. Use only "
             "numerical values in the display rows, with digits and without further "
             "rounding or calculation. Do not turn missing rows or a limited list into "
             "zero. Do not mention SQL or databases."
         )
-        try:
-            summary = _ask_claude(answer_prompt, max_tokens=450)
-        except Exception:
-            summary = "See the supporting results below."
-        if not _uses_returned_numbers(summary, display_rows):
-            summary = "See the supporting results below."
+        for attempt in range(2):
+            try:
+                response = _ask_claude(answer_prompt, max_tokens=450)
+            except Exception:
+                break
+            sections = re.split(r"\s*(?:\*\*)?\bnext steps?(?:\*\*)?\s*:\s*(?:\*\*)?\s*", response, maxsplit=1, flags=re.IGNORECASE)
+            candidate = sections[0].strip()
+            if candidate and _uses_returned_numbers(candidate, display_rows):
+                summary = candidate
+                if len(sections) == 2:
+                    next_step = sections[1].strip() or None
+                break
+            if attempt == 0:
+                answer_prompt += " Restate the answer using only figures exactly as returned, or omit the figures."
+        if summary is None:
+            summary = "Open the supporting data for the results."
+        if next_step and not _uses_returned_numbers(next_step, display_rows):
+            next_step = None
 
     _table, _headers = _to_label_value(rows)
     # Tracts to light up. Aggregate queries (e.g. GROUP BY category) carry no
@@ -323,9 +361,12 @@ def ask(q: Question):
     scope = "area" if set(highlights) == set(SILVER_SPRING_GEOIDS) else "selection"
 
     return {
-        "answer": " ".join((summary, *notes)),
+        "answer": " ".join(filter(None, (summary, next_step, *notes))),
         "summary": summary,
+        "next_step": next_step,
         "notes": notes,
+        "visual": _answer_visual(executed_sql, rows, listing_counts),
+        "supporting_data": _supporting_data(rows),
         "highlight_geoids": highlights,
         "highlight_scope": scope,
         "table": _table,
@@ -358,8 +399,8 @@ def _place_names_by_geoid():
     return _PLACE_NAME_CACHE
 
 
-def _business_counts(question, sql, rows):
-    """Render simple grouped listing counts directly from the query result."""
+def _grouped_business_counts(question, sql, rows):
+    """Read comparable listing counts from the returned rows."""
     if not (re.match(r"^how many\b", question, re.IGNORECASE)
             and re.search(r"\bbusinesses\b", sql, re.IGNORECASE)
             and re.search(r"\bcount\s*\(", sql, re.IGNORECASE)
@@ -379,9 +420,8 @@ def _business_counts(question, sql, rows):
         if len(counts) != 1:
             return None
         label = "café" if category == "cafe" else category.replace("_", " ")
-        items.append(f"{counts[0]:,} {label} listings")
-    listing_counts = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
-    return f"OpenStreetMap shows {listing_counts} in the selected area."
+        items.append((label, counts[0]))
+    return items
 
 
 def _place_count(question, sql, rows):
@@ -408,50 +448,96 @@ def _is_percentage(column):
     return any(word in column.lower() for word in ("pct", "percent", "share"))
 
 
-def _to_label_value(rows):
-    """
-    Turn raw query rows into readable {label, value} pairs.
+_HIDDEN_FIELDS = {"geoid", "source_url", "state_fips", "county_fips", "tract_code",
+                  "latitude", "longitude", "centroid_latitude", "centroid_longitude",
+                  "business_id", "geography_type", "duplicate_source_url", "geometry_geojson",
+                  "period_start", "period_end"}
 
-    The frontend shows a plain two-column table, so the value has to carry
-    its own meaning — "4,098" tells you nothing, "4,098 foreign-born
-    residents" tells you everything. Raw rows are returned separately
-    as `rows` for anything that needs the unformatted numbers.
-    """
-    # Coordinates are how the map works, not something a reader wants to see.
-    SKIP = {"geoid", "source_url", "state_fips", "county_fips", "tract_code",
-            "latitude", "longitude", "centroid_latitude", "centroid_longitude",
-            "business_id", "geography_type", "duplicate_source_url"}
+_COLUMN_LABELS = {
+    "population_count":                    "residents",
+    "female_count":                        "residents classified female by ACS",
+    "male_count":                          "residents classified male by ACS",
+    "employed_residents":                  "employed residents",
+    "foreign_born_count":                  "foreign-born residents",
+    "median_income":                       "median household income",
+    "english_only_at_home_count":          "speak only English at home",
+    "non_english_at_home_count":           "speak another language at home",
+    "age_18_34_count":                     "residents aged 18-34",
+    "occupied_housing_units_count":        "occupied homes",
+    "renter_occupied_housing_units_count": "rented homes",
+    "public_transit_commuter_count":       "commute by public transit",
+    "total_commuter_count":                "commuters",
+    "land_area_square_meters":             "sq. meters of land",
+    "business_count":                      "businesses",
+    "count":                               "businesses",
+}
+_COLUMN_LABELS.update({
+    "acs_vintage": "Census period",
+    "listing_count": "Mapped listings",
+    "transit_pct": "Public transit commute share",
+    "transit_commuters": "Public transit commuters",
+    "population_margin_of_error": "Population margin of error",
+    "female_margin_of_error": "Female estimate margin of error",
+    "male_margin_of_error": "Male estimate margin of error",
+})
 
-    # column name -> (how to say it, how to format it)
-    WORDS = {
-        "population_count":                    "residents",
-        "female_count":                        "residents classified female by ACS",
-        "male_count":                          "residents classified male by ACS",
-        "employed_residents":                  "employed residents",
-        "foreign_born_count":                  "foreign-born residents",
-        "median_income":                       "median household income",
-        "english_only_at_home_count":          "speak only English at home",
-        "non_english_at_home_count":           "speak another language at home",
-        "age_18_34_count":                     "residents aged 18-34",
-        "occupied_housing_units_count":        "occupied homes",
-        "renter_occupied_housing_units_count": "rented homes",
-        "public_transit_commuter_count":       "commute by public transit",
-        "total_commuter_count":                "commuters",
-        "land_area_square_meters":             "sq. meters of land",
-        "business_count":                      "businesses",
-        "count":                               "businesses",
+
+def _column_label(column):
+    return _COLUMN_LABELS.get(column, column.replace("_", " ")).capitalize()
+
+
+def _display_value(column, value):
+    if value is None:
+        return "Not available"
+    if type(value) not in (int, float):
+        return str(value)
+    if _is_percentage(column):
+        return f"{value:.1f}%"
+    if "income" in column:
+        return f"${value:,.0f}"
+    return f"{value:,.1f}" if isinstance(value, float) else f"{value:,}"
+
+
+def _supporting_data(rows):
+    columns = list(dict.fromkeys(key for row in rows for key in row if key not in _HIDDEN_FIELDS))
+    return {
+        "columns": [_column_label(column) for column in columns],
+        "rows": [[_display_value(column, row.get(column)) for column in columns] for row in rows],
     }
 
-    def phrase(column, v):
-        """Format the number only — the column header carries the meaning."""
-        if _is_percentage(column):
-            return f"{v:.1f}%"
-        if "income" in column:
-            return f"${v:,.0f}"
-        if isinstance(v, float):
-            return f"{v:,.1f}"
-        return f"{v:,}"
 
+def _answer_visual(sql, rows, listing_counts):
+    if listing_counts and len(listing_counts) > 1 and any(value for _, value in listing_counts):
+        return {
+            "title": "Mapped listings by type",
+            "scale_max": max(value for _, value in listing_counts),
+            "items": [{"label": label.capitalize(), "value": value, "display": f"{value:,}"}
+                      for label, value in listing_counts],
+        }
+    if not ("tract_history" in sql.lower() and 2 <= len(rows) <= 5):
+        return None
+    labels = [row.get("acs_vintage") for row in rows]
+    if not all(isinstance(label, str) and re.fullmatch(r"ACS \d{4}-\d{4}", label) for label in labels):
+        return None
+    if len(set(labels)) != len(labels):
+        return None
+    measures = [column for column in rows[0] if _is_percentage(column)]
+    if len(measures) != 1:
+        return None
+    measure = measures[0]
+    values = [row.get(measure) for row in rows]
+    if not all(type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 100 for value in values):
+        return None
+    return {
+        "title": _column_label(measure) + " by Census period",
+        "scale_max": 100,
+        "items": [{"label": label.removeprefix("ACS "), "value": round(value, 1),
+                   "display": _display_value(measure, value)} for label, value in sorted(zip(labels, values))],
+    }
+
+
+def _to_label_value(rows):
+    """Keep the original two-column response available to existing clients."""
     place_names = _place_names_by_geoid()
 
     out = []
@@ -461,7 +547,7 @@ def _to_label_value(rows):
         value = None
         spare_text = None
         for k, v in r.items():
-            if k in SKIP:
+            if k in _HIDDEN_FIELDS:
                 continue
             if isinstance(v, str):
                 if label is None:
@@ -469,7 +555,7 @@ def _to_label_value(rows):
                 elif spare_text is None:
                     spare_text = v                       # e.g. a business category
             elif value is None and isinstance(v, (int, float)) and not isinstance(v, bool):
-                value = phrase(k, v)
+                value = _display_value(k, v)
         # "Census Tract 7019" is not an answer to "where are the cheapest
         # homes". Say the neighbourhood instead - but only ever in place of a
         # tract number. A business row already has a better label: its name.
@@ -484,7 +570,7 @@ def _to_label_value(rows):
             # Aggregate rows (MIN/MAX/AVG) have no text column — name the
             # measure itself instead of showing a bare number as the label.
             numeric = [k for k, v in r.items()
-                       if k not in SKIP and isinstance(v, (int, float))
+                       if k not in _HIDDEN_FIELDS and isinstance(v, (int, float))
                        and not isinstance(v, bool)]
             if numeric:
                 col = numeric[0]
@@ -493,14 +579,14 @@ def _to_label_value(rows):
                             .replace("avg ", "average ").replace("pct ", "% ")
                             .strip().capitalize())
             else:
-                label = next((str(v) for k, v in r.items() if k not in SKIP), "Result")
+                label = next((str(v) for k, v in r.items() if k not in _HIDDEN_FIELDS), "Result")
         out.append({"label": label, "value": value})
 
     # Name the columns after what the query actually returned, so the table
     # says "Neighborhood / Foreign-born residents" instead of "Measure / Value".
     if rows:
         first = rows[0]
-        keys = [k for k in first if k not in SKIP]
+        keys = [k for k in first if k not in _HIDDEN_FIELDS]
         text_cols = [k for k in keys if isinstance(first[k], str)]
         num_cols = [k for k in keys
                     if isinstance(first[k], (int, float)) and not isinstance(first[k], bool)]
@@ -511,7 +597,7 @@ def _to_label_value(rows):
                                else t.replace("_", " ").capitalize())
         if num_cols:
             c = num_cols[0]
-            header["value"] = WORDS.get(c, c.replace("_", " ")).capitalize()
+            header["value"] = _column_label(c)
             if _is_percentage(c):
                 header["value"] = "Share (%)"
         elif len(text_cols) > 1:
