@@ -226,3 +226,6 @@ __pycache__/
 # Personal working rules, not team docs
 CLAUDE.md
 AGENTS.md
+
+# Generated four-question API captures
+evals/runs/

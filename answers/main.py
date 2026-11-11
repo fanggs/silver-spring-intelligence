@@ -83,15 +83,12 @@ def index():
     """Landing route so the bare URL explains itself instead of 404ing."""
     return {
         "service": "CivicLens API",
-        "what": "Queryable public community data for Montgomery County, Maryland "
-                "Silver Spring, Maryland — 19 census tracts, 81,727 residents, "
-                "455 businesses. Montgomery County's 232 tracts are in the "
-                "database too, so Silver Spring can be compared against them.",
+        "what": "Public community data for Silver Spring and Montgomery County, Maryland.",
         "endpoints": {
             "GET  /health": "service + database status",
-            "GET  /tracts": "Silver Spring's 19 tract boundaries as GeoJSON (?scope=county for all 232)",
+            "GET  /tracts": "Tract approximation of Silver Spring as GeoJSON (?scope=county for all tracts)",
             "GET  /boundary": "the Silver Spring CDP outline as GeoJSON",
-            "GET  /businesses": "Silver Spring business locations (?scope=county for all 5,953)",
+            "GET  /businesses": "Mapped listings in the Silver Spring tract approximation (?scope=county for all county listings)",
             "POST /ask": "ask a question in plain English -> answer, sources, and the SQL we ran",
             "GET  /docs": "interactive API explorer",
         },
@@ -196,7 +193,7 @@ def boundary():
 
 
 @app.get("/businesses")
-def businesses(limit: int = 6000, scope: str = "silver-spring"):
+def businesses(limit: int = 10000, scope: str = "silver-spring"):
     """Business points for the map pins. Silver Spring only by default."""
     clause, args = _scope_clause(scope)
     conn = sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)
@@ -232,7 +229,7 @@ def ask(q: Question):
     try:
         sql = _ask_claude(sql_prompt, max_tokens=1500)
     except Exception as exc:
-        return _cannot(f"Could not reach the language model: {exc}")
+        return _cannot(f"Could not reach the language model ({type(exc).__name__}).")
 
     if "CANNOT_ANSWER" in sql.upper():
         return _cannot()
@@ -248,25 +245,46 @@ def ask(q: Question):
     if not rows:
         return _cannot("No data matched that question.", sql=sql)
 
-    # 3. Claude phrases a sentence FROM THE REAL ROWS. The raw table is
-    #    returned too, so every number on screen is verifiable.
-    answer_prompt = (
-        f"Question: {question}\n\n"
-        f"These rows came back from the database:\n"
-        f"{json.dumps(rows[:25], indent=2)}\n\n"
-        "Write 1-2 plain sentences answering the question using ONLY these "
-        "numbers. Do not invent or estimate anything. Round large numbers "
-        "readably. Do not mention SQL or databases."
-    )
-    try:
-        answer = _ask_claude(answer_prompt, max_tokens=800)
-    except Exception:
-        answer = f"Found {len(rows)} matching result(s)."
+    notes = _answer_notes(executed_sql, rows, question)
+
+    # Round rates for display before passing them to the model. Keep the raw
+    # query rows in the response so the underlying estimates remain inspectable.
+    display_rows = [
+        {column: round(value, 1) if isinstance(value, float) and _is_percentage(column) else value
+         for column, value in row.items()}
+        for row in rows[:25]
+    ]
+    summary = _business_counts(question, executed_sql, rows)
+    if summary is None:
+        summary = _place_count(question, executed_sql, rows)
+    if summary is None:
+        answer_prompt = (
+            f"Question: {question}\n\n"
+            f"These rows came back from the database:\n"
+            f"{json.dumps(display_rows, indent=2)}\n\n"
+            f"Notes displayed separately: {' '.join(notes)}\n\n"
+            "Lead with the direct answer. For lookups and trends, use one short sentence "
+            "with the requested totals or rates. Omit lists of names and extra figures "
+            "unless requested. For planning questions, use up to three short sentences "
+            "that separate evidence from a next step. Keep planning answers under 55 words. "
+            "Do not infer demand, foot traffic or interest from counts. Do not repeat the notes "
+            "or claim statistical significance unless the query tested it. Use only "
+            "numerical values in the display rows, with digits and without further "
+            "rounding or calculation. Do not turn missing rows or a limited list into "
+            "zero. Do not mention SQL or databases."
+        )
+        try:
+            summary = _ask_claude(answer_prompt, max_tokens=450)
+        except Exception:
+            summary = "See the supporting results below."
+        if not _uses_returned_numbers(summary, display_rows):
+            summary = "See the supporting results below."
 
     _table, _headers = _to_label_value(rows)
     # Tracts to light up. Aggregate queries (e.g. GROUP BY category) carry no
     # geoid, so fall back to any place named in the question itself.
-    highlights = [r["geoid"] for r in rows if r.get("geoid")]
+    highlights = list(dict.fromkeys(str(r["geoid"]) for r in rows
+                                    if re.fullmatch(r"24031\d{6}", str(r.get("geoid")))))
     if not highlights:
         highlights = _sql_geoids(executed_sql) or _place_geoids(question)
     # An answer with no place in it is an answer about Silver Spring as a
@@ -280,13 +298,15 @@ def ask(q: Question):
     scope = "area" if set(highlights) == set(SILVER_SPRING_GEOIDS) else "selection"
 
     return {
-        "answer": answer,
+        "answer": " ".join((summary, *notes)),
+        "summary": summary,
+        "notes": notes,
         "highlight_geoids": highlights,
         "highlight_scope": scope,
         "table": _table,
         "table_headers": _headers,
         "rows": rows,
-        "sources": _sources(executed_sql, highlights),
+        "sources": _sources(executed_sql, highlights, rows),
         "sql": executed_sql,
     }
 
@@ -313,6 +333,56 @@ def _place_names_by_geoid():
     return _PLACE_NAME_CACHE
 
 
+def _business_counts(question, sql, rows):
+    """Render simple grouped listing counts directly from the query result."""
+    if not (re.match(r"^how many\b", question, re.IGNORECASE)
+            and re.search(r"\bbusinesses\b", sql, re.IGNORECASE)
+            and re.search(r"\bcount\s*\(", sql, re.IGNORECASE)
+            and 1 <= len(rows) <= 6):
+        return None
+    if re.search(r"\b(compare|versus|trend|between|which|names?|list them|by tract|by neighborhood)\b", question, re.IGNORECASE):
+        return None
+    types = [row.get("category") for row in rows]
+    if not all(isinstance(category, str) and category.strip() for category in types):
+        return None
+    if len(set(types)) != len(types) or any("geoid" in row for row in rows):
+        return None
+    items = []
+    for row, category in zip(rows, types):
+        counts = [value for key, value in row.items()
+                  if (key == "count" or key.endswith("_count")) and type(value) is int and value >= 0]
+        if len(counts) != 1:
+            return None
+        label = "café" if category == "cafe" else category.replace("_", " ")
+        items.append(f"{counts[0]:,} {label} listings")
+    listing_counts = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+    return f"OpenStreetMap shows {listing_counts} in the selected area."
+
+
+def _place_count(question, sql, rows):
+    """Render a direct Census place lookup without adding a numerical claim."""
+    if not (re.match(r"^how many\b", question, re.IGNORECASE) and len(rows) == 1
+            and re.search(r"\bfrom\s+place_data\b", sql, re.IGNORECASE)
+            and not re.search(r"\b(join|union|tract_data|tract_history|industry_employment)\b", sql, re.IGNORECASE)
+            and not re.search(r"\b(compare|versus|between|and|by)\b", question, re.IGNORECASE)):
+        return None
+    row = rows[0]
+    estimates = [column for column in ("female_count", "male_count", "population_count")
+                 if type(row.get(column)) is int and row[column] >= 0]
+    if len(estimates) != 1:
+        return None
+    column = estimates[0]
+    estimate = f"{row[column]:,}"
+    if column == "population_count":
+        return f"Silver Spring has an estimated population of {estimate} people."
+    sex = column.removesuffix("_count")
+    return f"The Census estimates that {estimate} Silver Spring residents are classified as {sex}."
+
+
+def _is_percentage(column):
+    return any(word in column.lower() for word in ("pct", "percent", "share"))
+
+
 def _to_label_value(rows):
     """
     Turn raw query rows into readable {label, value} pairs.
@@ -325,11 +395,14 @@ def _to_label_value(rows):
     # Coordinates are how the map works, not something a reader wants to see.
     SKIP = {"geoid", "source_url", "state_fips", "county_fips", "tract_code",
             "latitude", "longitude", "centroid_latitude", "centroid_longitude",
-            "business_id"}
+            "business_id", "geography_type", "duplicate_source_url"}
 
     # column name -> (how to say it, how to format it)
     WORDS = {
         "population_count":                    "residents",
+        "female_count":                        "residents classified female by ACS",
+        "male_count":                          "residents classified male by ACS",
+        "employed_residents":                  "employed residents",
         "foreign_born_count":                  "foreign-born residents",
         "median_income":                       "median household income",
         "english_only_at_home_count":          "speak only English at home",
@@ -346,7 +419,7 @@ def _to_label_value(rows):
 
     def phrase(column, v):
         """Format the number only — the column header carries the meaning."""
-        if column.startswith("pct") or "percent" in column or "share" in column:
+        if _is_percentage(column):
             return f"{v:.1f}%"
         if "income" in column:
             return f"${v:,.0f}"
@@ -414,7 +487,7 @@ def _to_label_value(rows):
         if num_cols:
             c = num_cols[0]
             header["value"] = WORDS.get(c, c.replace("_", " ")).capitalize()
-            if c.startswith("pct") or "share" in c or "percent" in c:
+            if _is_percentage(c):
                 header["value"] = "Share (%)"
         elif len(text_cols) > 1:
             header["value"] = text_cols[1].replace("_", " ").capitalize()
@@ -431,7 +504,7 @@ def _to_label_value(rows):
 #
 # These 19 tracts are the ones whose centroid falls inside the Census
 # Designated Place boundary for Silver Spring (GEOID 2472450). They hold
-# 81,727 people, which matches the Bureau's published CDP population.
+# 81,727 people in the original tract snapshot. This is a proxy, not a CDP estimate.
 SILVER_SPRING_GEOIDS = [
     "24031701601", "24031701602", "24031701900", "24031702000",
     "24031702101", "24031702200", "24031702301", "24031702302",
@@ -488,6 +561,8 @@ def _place_geoids(question: str):
 # judge can open and re-derive themselves.
 ACS_TABLES = {
     "population_count": ("B01003", "Total Population"),
+    "female_count": ("B01001", "Sex by Age"),
+    "male_count": ("B01001", "Sex by Age"),
     "age_18_34_count": ("B01001", "Sex by Age"),
     "foreign_born_count": ("B05001", "Nativity and Citizenship Status"),
     "median_income": ("B19013", "Median Household Income (past 12 months)"),
@@ -546,7 +621,7 @@ def _census_geo(geoids):
 
     if set(geoids) == set(SILVER_SPRING_GEOIDS):
         return (",".join(f"1400000US{g}" for g in geoids),
-                "summed across Silver Spring's 19 census tracts")
+                "whole census tracts used to approximate Silver Spring")
 
     if len(geoids) > MAX_LINKED_TRACTS:
         return ALL_TRACTS_GEO, f"summed across {len(geoids)} census tracts"
@@ -558,15 +633,54 @@ def _census_geo(geoids):
             f"summed across these {len(geoids)} census tracts")
 
 
-def _sources(sql: str, geoids):
-    """
-    Cite the exact published table behind every number in the answer.
+CDP_GEO = "160XX00US2472450"
 
-    We read the column names out of the SQL we actually ran, not out of the
-    result keys, because the model routinely renames them on the way out
-    (SUM(median_income) AS avg_income). The SQL text still carries the real
-    column, so it stays the honest place to look.
-    """
+
+def _official_industry(sql, rows):
+    if any(row.get("geography_type") for row in rows):
+        return any(row.get("geography_type") == "place" for row in rows)
+    return any(str(row.get("geoid")) == "2472450" for row in rows) or bool(
+        re.search(r"geography_type\s*=\s*['\"]place['\"]|geoid\s*=\s*['\"]?2472450\b", sql)
+    )
+
+
+def _answer_notes(sql, rows, question):
+    query = sql.lower()
+    notes = []
+    industry_place = "industry_employment" in query and _official_industry(query, rows)
+    if "place_data" in query or industry_place:
+        notes.append("The Census estimate uses Silver Spring’s official Census boundary.")
+    if re.search(r"\b(?:female|male)_count\b", query):
+        notes.append("The Census estimate describes sex and does not measure self-identified gender.")
+    if "industry_employment" in query:
+        notes.append("The industry estimate describes employed residents and does not count jobs located here.")
+    if re.search(r"\b(?:tract_data|tract_history|businesses|industry_employment)\b", query):
+        if _place_geoids(question) and ("places" in query or "businesses" in query):
+            notes.append("The mapped Census tracts approximate the named neighborhood or district.")
+        elif "place_data" not in query and not industry_place and not re.search(r"\bcounty\b", question.lower()):
+            notes.append("Whole Census tracts approximate the area for this result.")
+    if "businesses" in query:
+        notes.append("OpenStreetMap listings may be incomplete or out of date.")
+    return notes
+
+
+def _uses_returned_numbers(answer, rows):
+    """Reject new written numbers, including values copied from the question."""
+    pattern = r"(?<![\w.])[+−-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+
+    def numbers(value):
+        return {float(match.replace(",", "").replace("−", "-")) for match in re.findall(pattern, value)}
+
+    allowed = {float(value) for row in rows for value in row.values() if type(value) in (float, int)}
+    for row in rows:
+        for key in ("acs_vintage", "name", "place_name", "industry"):
+            if isinstance(row.get(key), str):
+                allowed.update(numbers(row[key]))
+    return numbers(answer) <= allowed
+
+
+def _sources(sql, geoids, rows):
+    """Attach Census links for the actual level of geography and each data vintage."""
     text = (sql or "").lower()
     geo, geo_note = _census_geo(geoids)
     out, seen = [], set()
@@ -576,27 +690,37 @@ def _sources(sql: str, geoids):
             seen.add(url)
             out.append({"label": label, "url": url})
 
-    for column, (code, title) in ACS_TABLES.items():
-        if column in text:
-            add(f"{ACS_VINTAGE} - Table {code}, {title} ({geo_note})",
-                ACS_TABLE_URL.format(code=code, geo=geo))
+    def census(code, title, geography, note, year=2024):
+        add(f"ACS {year - 4}-{year}, Table {code}, {title} ({note})",
+            ACS_TABLE_URL.format(code=code, geo=geography).replace("ACSDT5Y2024", f"ACSDT5Y{year}"))
 
+    is_place = "place_data" in text
+    uses_tracts = not is_place or bool(re.search(r"\btract_(?:data|history)\b", text))
+    for column, (code, title) in ACS_TABLES.items():
+        if not re.search(rf"\b{column}\b", text):
+            continue
+        if is_place and code in {"B01003", "B01001"}:
+            census(code, title, CDP_GEO, "official Silver Spring Census place")
+        if uses_tracts:
+            census(code, title, geo, geo_note)
+            if "tract_history" in text:
+                census(code, title, geo, geo_note, 2020)
+    if "industry_employment" in text:
+        industry_place = _official_industry(text, rows)
+        if industry_place:
+            census("C24050", "Industry by Occupation", CDP_GEO, "residents of the official Silver Spring Census place")
+        if not industry_place or any(row.get("geography_type") == "tract" for row in rows):
+            census("C24050", "Industry by Occupation", geo, geo_note)
     if any(column in text for column in GEOMETRY_COLUMNS):
         add(*TIGER_SOURCE)
-    if "tract_history" in text:
-        add(f"ACS 5-Year Estimates 2016-2020 - earlier vintage, for measuring change ({geo_note})",
-            ACS_TABLE_URL.format(code="B01003", geo=geo).replace("ACSDT5Y2024", "ACSDT5Y2020"))
     if "businesses" in text:
         add(*OSM_SOURCE)
-    if " places" in text or "places " in text:
-        add("OpenStreetMap named places, resolved to census tracts",
-            "https://www.openstreetmap.org/copyright")
-
+    if re.search(r"\bplaces\b", text):
+        add("Downtown district and neighborhood mappings use whole tracts",
+            "https://montgomeryplanning.org/planning/communities/east-county/silver-spring/silver-spring-downtown-plan/")
     if not out:
-        # Nothing recognizable in the SQL - cite the population table for
-        # whatever geography the answer covered.
-        add(f"{ACS_VINTAGE} - Table B01003, Total Population ({geo_note})",
-            ACS_TABLE_URL.format(code="B01003", geo=geo))
+        census("B01003", "Total Population", CDP_GEO if is_place else geo,
+               "official Silver Spring Census place" if is_place else geo_note)
     return out
 
 

@@ -40,13 +40,15 @@ database.
 | --- | --- | --- |
 | `tract_data` | 232 | Current ACS estimates per census tract |
 | `tract_history` | 464 | Same tracts at two ACS vintages, for measuring change |
-| `businesses` | 5,953 | OpenStreetMap locations, each joined to its tract |
-| `places` | 66 | 63 named neighbourhoods and districts → tracts |
-| `data_sources` | 6 | Publisher, vintage, coverage, retrieval date |
+| `businesses` | Varies by snapshot | OpenStreetMap listings with original venue types and tract IDs |
+| `places` | Varies by snapshot | Named neighborhoods and districts mapped to whole tracts |
+| `place_data` | 1 | Official Silver Spring Census population and sex estimates |
+| `industry_employment` | 3,262 | Employed residents by industry for county tracts and the official place |
+| `data_sources` | 8 | Publisher, vintage, coverage, retrieval date |
 
-Silver Spring is the Census Designated Place (GEOID 2472450): **19 tracts,
-81,727 residents, 455 businesses**. The county's other tracts stay in the
-database so "compared with the rest of the county" is a real query.
+Official Silver Spring Census Designated Place estimates live in `place_data`.
+The map uses a whole-tract approximation for neighborhood comparisons. The
+county's remaining tracts support broader comparisons.
 
 ### Sources
 
@@ -72,25 +74,30 @@ page/         the map — plain HTML, CSS, Leaflet, no build step
 data/         silverspring.db and the Silver Spring boundary
 ```
 
-## Running it
+## Testing locally
+
+The API reads `ANTHROPIC_API_KEY` from `.env`. Set a valid key there for
+questions and keep the existing `CENSUS_API_KEY` entry. The map can load data
+with the existing configuration even if Claude rejects the key.
+
+From the project directory, start the API:
 
 ```bash
-pip install -r answers/requirements.txt
-echo "ANTHROPIC_API_KEY=sk-..." > .env
-uvicorn answers.main:app --reload
+.venv/bin/python -m uvicorn answers.main:app --host 127.0.0.1 --port 8000
 ```
 
-Then serve the map:
+In a second terminal from the same directory, start the webpage:
 
 ```bash
-cd page && python3 -m http.server 5500
+.venv/bin/python -m http.server 5500 --bind 127.0.0.1 --directory page
 ```
 
-Point `API_BASE_URL` at the top of `page/script.js` to your API. **No trailing
-slash** — it produces `//tracts` and 404s every request.
+Open [the local map](http://127.0.0.1:5500/app.html). It uses the local API
+and SQLite snapshot. The public page uses the deployed Render API.
 
-To rebuild the database from scratch you also need `CENSUS_API_KEY` in `.env`
-(free from census.gov/developers), then run `get_data/build_database.py`.
+For a database check that needs no model call, run
+`.venv/bin/python -m get_data.validate_database`. For source refreshes and
+rebuilds, see [the data pipeline](get_data/README.md).
 
 ## Things worth knowing
 
@@ -110,3 +117,9 @@ To rebuild the database from scratch you also need `CENSUS_API_KEY` in `.env`
 
 Alan Tran (API and query layer) · Sid Valluri (data pipeline) ·
 Aryan Nimmagadda (map and interface)
+
+## Release checks
+
+Run `python3 evals/run.py --label baseline` to capture the four fixed
+stakeholder questions against the live API. See [evals/README.md](evals/README.md)
+for local runs, saved evidence, release comparisons and exit codes.

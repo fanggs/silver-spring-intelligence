@@ -155,7 +155,8 @@ button,input{font:inherit;}
 .swatch-business{background:var(--forest);}
 .answer-state{margin-top:16px;padding:18px;border-radius:10px;background:var(--paper);color:var(--muted);line-height:1.55;}
 .answer-state.is-error{background:#fff1ec;color:#9a3e28;}
-.app-answer-text{margin:18px 0 25px;font-size:clamp(22px,2vw,29px);line-height:1.35;font-weight:700;letter-spacing:-.025em;}
+.app-answer-text{margin:18px 0 12px;font-size:clamp(18px,1.4vw,22px);line-height:1.55;font-weight:550;overflow-wrap:anywhere;}
+.app-answer-notes{margin:0 0 16px;color:var(--muted);font-size:14px;line-height:1.5;}
 .app-sources,.app-table-wrap{padding-top:17px;margin-top:18px;border-top:1px solid var(--border);}
 .app-sources h3,.app-table-wrap h3{margin-bottom:11px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;}
 .app-sources ul{padding-left:19px;}

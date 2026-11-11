@@ -134,8 +134,8 @@ API        https://civiclens-api-ack0.onrender.com   web service
 Domain     uxucivic.com                              added, pending DNS
 ```
 
-The frontend hardcodes the API address at `page/script.js` line 4. **Changing
-the API's URL breaks the map until that line is updated and pushed.**
+The frontend selects the local API on port 8000 when served on localhost.
+The public frontend uses the Render URL configured in `page/script.js`.
 
 Free-tier API sleeps after 15 minutes idle and takes ~1 minute to wake. The
 static site never sleeps, so the page loads instantly and the map sits empty
@@ -143,29 +143,32 @@ during the wake. Starter plan ($7/mo) removes this.
 
 ## Data
 
-Six sources, all recorded in the `data_sources` table:
+Sources and vintages are recorded in the `data_sources` table:
 
 ```
-ACS 2020-2024          demographics, income, language, housing, commuting
+ACS 2020-2024          tract and official place estimates, sex, industry,
+                       income, language, housing, commuting
 ACS 2016-2020          same fields, earlier vintage — this is what makes
                        "what's changing" possible
 Census TIGER 2024      tract boundary geometry
-OpenStreetMap          5,953 businesses
-OpenStreetMap          56 named places
+OpenStreetMap          mapped businesses and amenities by original tag
+OpenStreetMap          neighborhood place points
 M-NCPPC                official Silver Spring CBD boundary
 ```
 
-Coverage: 232 Montgomery County tracts. Silver Spring is the 19-tract Census
-Designated Place (GEOID 2472450), 81,727 residents, 455 businesses. County-wide
-data stays so "compared with the rest of the county" is a real query.
+The official Silver Spring Census Designated Place (GEOID 2472450) has a
+published population estimate in `place_data`. The map's selected whole tracts
+approximate that area. `industry_employment` identifies its place and tract
+estimates separately. Industry figures describe employed residents. Census sex
+estimates do not measure self-identified gender.
 
-**Places.** The Census publishes tracts, not neighborhoods. 63 named places
-come from resolving OpenStreetMap place points to their containing tract via a
-hand-written ray-casting point-in-polygon test (no geospatial library, in both
-Python and JS). The seven downtown sector-plan districts — Fenton Village,
-Ellsworth, Ripley, Falklands and the rest — exist in no dataset anywhere; each
-is derived from its namesake street clipped to the official CBD polygon, and
-every place records how it was located.
+**Places.** OpenStreetMap place points resolve to their containing tract. The
+seven downtown planning districts retain the project's reviewed tract mappings
+and their method. These mappings approximate district geography. Counts over
+those mappings describe whole tracts and depend on OpenStreetMap coverage.
+
+A complete rebuild writes and validates a separate database file before
+replacing the output. See [the data pipeline](get_data/README.md).
 
 ## Map highlighting
 

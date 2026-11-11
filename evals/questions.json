@@ -1,0 +1,26 @@
+[
+  {
+    "id": "q1-bookstore",
+    "category": "Taking action",
+    "question": "Should I open a bookstore in Fenton Village?",
+    "review": "Does it answer the decision directly, with relevant evidence and clear limits rather than unsupported advice?"
+  },
+  {
+    "id": "q2-ecommerce-panel",
+    "category": "Planning an event",
+    "question": "We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here?",
+    "review": "Does it address event planning and retail workers? Initial baseline refused: industry/occupation data was missing. Recheck ingestion before blaming the model."
+  },
+  {
+    "id": "q3-female-residents",
+    "category": "People",
+    "question": "How many people who identify as female live in Silver Spring?",
+    "review": "Does it give a sourced count for the right geography and explain the measure? Initial baseline refused: sex data was missing. ACS sex counts must not be presented as a measure of gender identity."
+  },
+  {
+    "id": "q4-restaurants",
+    "category": "Specific lookup",
+    "question": "How many restaurants are in Fenton Village?",
+    "review": "Does it give the count directly and describe the geography clearly? Initial baseline returned 76 but exposed unnamed tract counts. Treat 76 as a historical observation, not a permanent expected answer."
+  }
+]

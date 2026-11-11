@@ -8,7 +8,7 @@ read. If Sid adds a column, add a line here.
 
 SCHEMA_DESCRIPTION = """
 SQLite database: public community data for Montgomery County, Maryland
-(which contains Silver Spring). 232 census tracts, 5,953 businesses.
+(which contains Silver Spring).
 
 TABLE tract_data  -- one row per census tract (a neighborhood-sized area)
   geoid                                TEXT, unique tract id, e.g. '24031702502'
@@ -17,7 +17,10 @@ TABLE tract_data  -- one row per census tract (a neighborhood-sized area)
   land_area_square_meters              INTEGER
   centroid_latitude                    REAL
   centroid_longitude                   REAL
-  population_count                     INTEGER, total residents
+  population_count                     INTEGER, estimated total residents
+  population_margin_of_error           INTEGER
+  female_count, male_count             INTEGER, ACS sex estimates, not gender identity
+  female_margin_of_error, male_margin_of_error INTEGER
   age_18_34_count                      INTEGER, residents aged 18-34
   foreign_born_count                   INTEGER, residents born outside the US
   median_income                        INTEGER, median household income in dollars
@@ -31,16 +34,33 @@ TABLE tract_data  -- one row per census tract (a neighborhood-sized area)
   source_url                           TEXT, citation link for this row
   retrieved_at                         TEXT
 
-TABLE businesses  -- one row per business, located inside a tract
+TABLE businesses  -- named OpenStreetMap listings, including businesses and amenities
   business_id    TEXT
   name           TEXT
-  category       TEXT, e.g. 'restaurant', 'bank', 'grocery', 'hairdresser'
+  category       TEXT, e.g. 'restaurant', 'fast food', 'cafe', 'bar', 'pub', 'books'
+  category_group TEXT, e.g. 'food and drink', 'retail', 'other amenity'
+  osm_amenity    TEXT, original OSM amenity tag, e.g. 'restaurant' or 'fast_food'
+  osm_shop       TEXT, original OSM shop tag, e.g. 'books' for bookstores
+  duplicate_source_url TEXT, alternate OSM record when a matching node and area were merged
   address        TEXT
   latitude       REAL
   longitude      REAL
   geoid          TEXT, the tract this business sits in -> joins to tract_data.geoid
   source_name    TEXT
   source_url     TEXT, citation link
+
+TABLE place_data  -- official Census Designated Place estimates, separate from tracts
+  geoid TEXT ('2472450'), place_name TEXT, population_count INTEGER,
+  population_margin_of_error INTEGER, female_count INTEGER, female_margin_of_error INTEGER,
+  male_count INTEGER, male_margin_of_error INTEGER, acs_vintage TEXT, source_url TEXT, retrieved_at TEXT
+
+TABLE industry_employment  -- current ACS C24050 industry estimates, one row per industry and geography
+  geoid TEXT, geography_type TEXT ('place' or 'tract'), industry TEXT,
+  employed_residents INTEGER, margin_of_error INTEGER, acs_vintage TEXT,
+  source_url TEXT, retrieved_at TEXT
+  industry='Retail trade' counts residents age 16+ employed in retail, not jobs located there.
+  industry='All industries' is the total. Do not double count it in an industry sum.
+  Join to tract_data or places only for geography_type='tract'.
 
 TABLE data_sources  -- provenance for each dataset
   dataset_id, dataset_name, publisher, source_url,
@@ -68,10 +88,10 @@ HOW TO ANSWER "WHAT'S CHANGING?"
 - Use tract_history, not tract_data. Aggregate each vintage separately and
   return BOTH rows so the change is visible, e.g.
     SELECT acs_vintage,
+           ROUND(100.0 * SUM(public_transit_commuter_count)
+                 / NULLIF(SUM(total_commuter_count), 0), 1) AS transit_pct,
            SUM(public_transit_commuter_count) AS transit_commuters,
            SUM(total_commuter_count) AS commuters,
-           100.0 * SUM(public_transit_commuter_count)
-                 / NULLIF(SUM(total_commuter_count), 0) AS transit_pct,
            MIN(source_url) AS source_url
     FROM tract_history
     WHERE geoid IN (<the tracts in scope>)
@@ -94,24 +114,30 @@ TABLE places
   precision    TEXT     how the tract was assigned
   source_name  TEXT     'OpenStreetMap' or 'Montgomery County Planning...'
   source_url   TEXT
-  63 named places across Silver Spring, 84 rows (a place can span tracts).
+  One place can map to multiple whole tracts.
 
 IMPORTANT CONTEXT — WHAT "HERE" MEANS
 This product is about SILVER SPRING, Maryland. The database covers the whole
 of Montgomery County so that county comparisons are possible, but Silver
 Spring is the subject.
 
-- SILVER SPRING is these 19 tracts (the Census Designated Place, GEOID
-  2472450, 81,727 residents):
+- For population or ACS sex estimates for Silver Spring as a whole, use place_data
+  WHERE geoid='2472450'. For the Silver Spring industry estimate (including "around here"
+  without a named district), use industry_employment with geography_type='place'
+  AND geoid='2472450'. Return only the official place row unless the question
+  asks for smaller areas or a geographic comparison. Select the estimate,
+  margin of error, and source_url.
+- A question about residents who identify as female can be answered with the
+  closest available measure, female_count, clearly labeled as Census sex.
+  Say gender identity is not measured by that estimate.
+- For other metrics available only at tract level, the map uses these 19 whole
+  tracts as an approximation of Silver Spring. They do not match the official place boundary:
     '24031701601','24031701602','24031701900','24031702000','24031702101',
     '24031702200','24031702301','24031702302','24031702401','24031702402',
     '24031702501','24031702502','24031702503','24031702602','24031702603',
     '24031702604','24031702700','24031702800','24031702900'
-
-- **DEFAULT SCOPE IS SILVER SPRING.** If the question says "here", "this
-  area", "the neighborhood", or names no place at all, filter to those 19
-  geoids. Do NOT silently answer for the whole county — the user is looking
-  at a map of Silver Spring, and a county number next to it is wrong.
+- Use the Silver Spring scope for unqualified "here" or "around here". Only use
+  the county for an explicit county question. Never add the CDP row to tract rows.
 
 - People write the name loosely. "Silver Springs", "silver spring md",
   "downtown Silver Spring", "SS" and similar ALL mean Silver Spring. Never
@@ -128,15 +154,10 @@ Spring is the subject.
   wording is close ("Fenton" for "Fenton Village"). A place can map to more
   than one tract, so aggregate across them.
 
-  places.kind = 'district' means a downtown sector-plan district (Fenton
-  Village, Ellsworth, Ripley District, Metro Center, Downtown North, South
-  Silver Spring, Falklands). No agency publishes their boundaries, so each
-  was located from its namesake street clipped to the official Silver Spring
-  CBD - places.precision records exactly how. Adjacent districts can share a
-  tract (Ripley District and Metro Center are both in 7025.01), so they will
-  return the same demographic figures. Say so plainly when it happens: the
-  Census publishes no smaller than a tract. Business counts can still differ
-  between districts that span different tracts.
+  places.kind = 'district' means a downtown sector-plan district. These are tract
+  approximations. Use the distinct mapped geoids with IN (SELECT geoid FROM places ...)
+  so a row cannot be counted twice. Always distinguish the approximation from
+  the actual district boundary. This applies to all counts, including businesses.
 
   places.kind = anything else came from OpenStreetMap and is located in the
   single tract containing that place's point.
@@ -163,23 +184,32 @@ DATA QUIRKS YOU MUST HANDLE
 - Some columns are NULL for some tracts. Filter with IS NOT NULL when ranking.
 
 HOW TO ANSWER BUSINESS QUESTIONS
-- "What businesses are in X?" / "What kinds of businesses..." / "What is the
-  business mix?"  ->  AGGREGATE BY CATEGORY. Use
-    SELECT category, COUNT(*) AS business_count, MIN(source_url) AS source_url
-    FROM businesses WHERE geoid IN (...) GROUP BY category
-    ORDER BY business_count DESC
-  Do NOT list individual business names — the character of a district is its
-  mix of categories, not a roll call of shops.
-- Only list individual businesses when the user explicitly asks to name them
-  ("which restaurants", "list the cafes", "what is X called").
+- For a specific count, apply the exact tag first and return a single aggregate for
+  the requested area. For counts of multiple venue types in one area, return
+  one total per type across all mapped tracts. Group only by type and omit
+  names and geoid unless requested. Return category and COUNT(*) AS listing_count.
+  Restaurants are osm_amenity='restaurant'. A request for
+  food and drink broadly can use category_group='food and drink', with a breakdown
+  by category. Do not silently include cafes, bars, pubs or fast food in restaurant counts.
+- For a business decision, query the requested business type directly before
+  using surrounding business mix. Bookstores are osm_shop='books' (which also
+  includes specialty book shops). Use COUNT(*) and the matching names, e.g.
+  GROUP_CONCAT(name, ', '), to show the direct evidence. Return only the target
+  category and any specific complementary evidence that is actually relevant.
+  A limited list of top categories never proves a type is absent. Mapped businesses
+  do not establish foot traffic, demand, or whether a business is still operating.
+- Counts reflect mapped OpenStreetMap listings, not a complete operating-business
+  registry. Listings alone do not verify opening status, foot traffic, or demand.
+- For broad mix, group by category. For an event planning question, gather any
+  requested industry estimate and use it to offer limited, practical suggestions.
+  Do not imply retail residents work locally or infer interest in the event.
 
 RULES FOR WRITING SQL
 - HOUSING AFFORDABILITY: there is no rent or house-price column. Answer with
   median_income (excluding the 250001 top-code) plus the renter share, and
   say which measure you used. Do not refuse the question.
-- When a question is about a named place, SELECT the geoid column too. The
-  map highlights whatever geoids come back, so an answer without them
-  leaves the map showing nothing.
+- Return geoids for individual rows or geographic comparisons. For totals
+  across a named area, do not group by geoid. The map can use the place name.
 - SELECT statements only. Never INSERT, UPDATE, DELETE, DROP, ALTER, PRAGMA.
 - ALWAYS include source_url in the columns you select, so answers can cite.
 - Never select geometry_geojson; it is huge and not useful in an answer.
@@ -187,15 +217,12 @@ RULES FOR WRITING SQL
   e.g. 100.0 * foreign_born_count / NULLIF(population_count, 0)
 - Some columns may be NULL. Use IS NOT NULL filters where it matters.
 - Prefer LIMIT 10 or fewer unless the question clearly wants more.
-- Return raw counts alongside any percentage you compute.
+- Include `pct` in percentage aliases. Return raw counts alongside percentages.
 """
 
 # Shown to the user when we can't answer. Describes real coverage.
 COVERAGE_BLURB = (
-    "I can answer questions about Silver Spring, Maryland — population, "
-    "household income, foreign-born residents, languages spoken at home, "
-    "housing, commuting, and 455 local businesses, across roughly 60 named "
-    "neighbourhoods and districts. I can also show how those have changed "
-    "since 2016, and compare Silver Spring with the rest of Montgomery "
-    "County."
+    "I can answer questions about Silver Spring population, Census sex estimates, "
+    "industry of employed residents, household income, language, housing, commuting, "
+    "and mapped businesses and amenities. Some measures are available by tract only."
 )

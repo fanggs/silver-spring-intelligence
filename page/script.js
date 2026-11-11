@@ -1,7 +1,8 @@
 "use strict";
 
-/* Change only this address when Alan gives you the deployed URL. No API keys go here. */
-const API_BASE_URL = "https://civiclens-api-ack0.onrender.com";
+// Local testing uses the API on this computer. The hosted page uses Render.
+const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const API_BASE_URL = isLocal ? "http://127.0.0.1:8000" : "https://civiclens-api-ack0.onrender.com";
 const SCOPE_MESSAGE = "I can't answer that from the data I have. I can tell you about population, languages spoken at home, household income, foreign-born residents, housing, commuting and local businesses for Silver Spring, Maryland and its neighborhoods, how those have changed since 2016, and how Silver Spring compares with the rest of Montgomery County.";
 
 function initLandingPage() {
@@ -40,6 +41,7 @@ function initAppPage() {
         state: element("answerState"),
         result: element("answerResult"),
         answer: element("answerText"),
+        notes: element("answerNotes"),
         sources: element("sourceList"),
         rows: element("supportRows"),
         layerStatus: element("layerStatus"),
@@ -167,8 +169,11 @@ function initAppPage() {
     }
 
     function renderAnswer(payload) {
-        // These four names are the exact /ask response contract.
-        const answer = typeof payload?.answer === "string" ? payload.answer.trim() : "";
+        const summary = typeof payload?.summary === "string" ? payload.summary.trim() : "";
+        const answer = summary || (typeof payload?.answer === "string" ? payload.answer.trim() : "");
+        const notes = summary && Array.isArray(payload?.notes)
+            ? payload.notes.filter((note) => typeof note === "string").join(" ")
+            : "";
         const highlights = Array.isArray(payload?.highlight_geoids) ? payload.highlight_geoids : [];
         const table = Array.isArray(payload?.table) ? payload.table : [];
         const sources = Array.isArray(payload?.sources) ? payload.sources : [];
@@ -189,6 +194,8 @@ function initAppPage() {
         ui.state.hidden = true;
         ui.result.hidden = false;
         ui.answer.textContent = answer;
+        ui.notes.textContent = notes;
+        ui.notes.hidden = !notes;
         ui.sources.replaceChildren();
 
         sources.forEach((source) => {
@@ -850,7 +857,7 @@ function initAppPage() {
 
         ui.layerStatus.textContent = failures.length
             ? "Some map layers could not load; you can still ask a question."
-            : "Silver Spring: 19 census tracts and 455 business locations.";
+            : "Mapped listings in the tracts used to approximate Silver Spring.";
     }
 
     ui.form.addEventListener("submit", async (event) => {

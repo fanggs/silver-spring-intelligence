@@ -8,12 +8,10 @@ source, the same as the rest of the database.
 """
 from __future__ import annotations
 import json
-import urllib.parse
-import urllib.request
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+from .fetch_businesses import fetch_osm, osm_elements
+
 OSM_SOURCE_URL = "https://www.openstreetmap.org/copyright"
-USER_AGENT = "CivicLens/1.0 (Bay Hacks student project)"
 
 # The Silver Spring CDP bounding box, padded slightly so places that sit on
 # the edge still come back and can be tested properly.
@@ -27,16 +25,11 @@ QUERY = """[out:json][timeout:90];
 out center tags;""" % (BBOX + BBOX)
 
 
-def fetch_osm_places():
-    body = urllib.parse.urlencode({"data": QUERY}).encode()
-    req = urllib.request.Request(
-        OVERPASS_URL, data=body, headers={"User-Agent": USER_AGENT}
-    )
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        payload = json.load(resp)
-
+def fetch_osm_places(payload=None):
+    if payload is None:
+        payload = fetch_osm(QUERY)
     places = []
-    for el in payload.get("elements", []):
+    for el in osm_elements(payload):
         tags = el.get("tags", {})
         name = tags.get("name")
         kind = tags.get("place")

@@ -7,7 +7,9 @@ import requests, shapefile
 URL = "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_24_tract_500k.zip"
 
 def fetch_tract_geometry():
-    archive = zipfile.ZipFile(io.BytesIO(requests.get(URL, timeout=180).content))
+    response = requests.get(URL, timeout=90)
+    response.raise_for_status()
+    archive = zipfile.ZipFile(io.BytesIO(response.content))
     with tempfile.TemporaryDirectory() as directory:
         archive.extractall(directory)
         shp_path = next(Path(directory).glob("*.shp"))
