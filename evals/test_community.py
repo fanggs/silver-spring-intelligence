@@ -153,6 +153,24 @@ class CommunityTests(unittest.TestCase):
         self.assertTrue(main._uses_returned_numbers('Issued 2026-10-28; capacity 120.', [{'issued':'2026-10-28','capacity':'120'}]))
         self.assertFalse(main._uses_returned_numbers('There are 99999 venues.', [{'source_url':'https://example.com/99999'}]))
 
+    def test_count_sentence_names_the_filtered_category(self):
+        sql = "SELECT COUNT(*) AS listing_count, MIN(source_url) AS source_url FROM businesses WHERE osm_amenity = 'restaurant' AND geoid IN (SELECT geoid FROM places WHERE LOWER(name) = LOWER('Fenton Village'))"
+        sentence = main._single_listing_count('How many restaurants are in Fenton Village?', sql, [{'listing_count': 43, 'source_url': 'x'}])
+        self.assertEqual(sentence, 'There are 43 mapped restaurant listings in the tract area used to approximate Fenton Village.')
+
+    def test_numbers_written_as_words_are_checked_too(self):
+        # The live answer on b3d52ec: the rows listed 5 hotels, the text said "six".
+        hotels = [{'label': f'Candidate event venue: Hotel {i} (hotel)'} for i in range(5)]
+        rows = hotels + [{'hotel_count': 5, 'community_centre_count': 2}]
+        self.assertFalse(main._uses_returned_numbers('Options include two community centres and six hotels.', rows))
+        self.assertTrue(main._uses_returned_numbers('Options include two community centres and five hotels.', rows))
+        self.assertTrue(main._uses_returned_numbers('Options include 2 community centres and 5 hotels.', rows))
+        self.assertEqual(main._word_numbers('twenty-one stops, thirty two shops, three hundred permits, a dozen cafes'),
+                         {21.0, 32.0, 300.0, 12.0})
+        # "one" is ordinary language, and names from the data are returned evidence.
+        self.assertTrue(main._uses_returned_numbers('Ask one specific question at Five Guys.', [{'name': 'Five Guys'}]))
+        self.assertFalse(main._uses_returned_numbers('There are seven bookstores.', [{'count': 2}]))
+
     def test_year_filtered_by_query_can_name_scope_but_nothing_else(self):
         rows = [{'incidents': 3635}]
         sql = """SELECT COUNT(*) AS incidents FROM community_crime WHERE "when" >= '2025-01-01' AND "when" < '2026-01-01' LIMIT 500"""
