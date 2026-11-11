@@ -181,7 +181,7 @@ function initAppPage() {
         const allNotes = Array.isArray(payload?.notes) ? payload.notes.filter(note => typeof note === "string") : [];
         // Notes that must stay visible under the answer. The "only the first N
         // results" notice comes first from the API and always shows.
-        const essential = allNotes.filter(note => /the first [\d,]+ (?:of [\d,]+ )?results|approximate|not measure self|do not measure foot/i.test(note));
+        const essential = allNotes.filter(note => /the first [\d,]+ (?:of [\d,]+ )?results|incomplete|Race and Hispanic|approximate|not measure self|do not measure foot/i.test(note));
         const notes = summary ? essential.slice(0, 2).join(" ") : "";
         element("methodologyNotes").textContent = allNotes.join(" ");
         const highlights = Array.isArray(payload?.highlight_geoids) ? payload.highlight_geoids : [];

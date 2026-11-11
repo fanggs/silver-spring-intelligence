@@ -110,6 +110,10 @@ def build_snapshot(output, *, business_payload=None, place_payload=None, partner
         if partner_warehouse:
             from .import_community import import_community
             import_community(partner_warehouse, partner_geometry, candidate, candidate)
+        demographic_snapshot = Path(__file__).resolve().parents[1] / 'data/demographics_2024.json'
+        if demographic_snapshot.exists():
+            from .import_demographics import import_demographics
+            import_demographics(json.loads(demographic_snapshot.read_text()), candidate, candidate)
         validate_database(candidate)
         candidate.replace(output)
     print(f"Saved validated database to {output}")

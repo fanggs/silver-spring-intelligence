@@ -248,7 +248,7 @@ RULES FOR WRITING SQL
 COVERAGE_BLURB = (
     "I can answer questions about Silver Spring population, Census sex estimates, "
     "industry of employed residents, household income, language, housing, commuting, "
-    "mapped businesses and amenities, venues, transit stops, reported incidents, "
+    "race and Hispanic-origin population estimates, mapped businesses and amenities, venues, transit stops, reported incidents, "
     "permits, parcels, and additional community measures when installed. Geography "
     "and snapshot dates vary by source."
 )

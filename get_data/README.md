@@ -47,3 +47,33 @@ also imports the bundled pair after rebuilding Census and OSM records; it can
 accept a replacement pair with `--partner-warehouse` and `--partner-geometry`.
 The normal validator checks both primary and imported source integrity.
 See `docs/combined-data.md` for scope and maintenance limitations.
+# Dated race and Hispanic-origin estimates
+
+The bundled `data/demographics_2024.json` contains extracted ACS 2020–2024
+B02001 and B03002 estimates for all current county tracts and the official
+Silver Spring place. Labels and parent categories come from the Census table
+shells. `demographic_estimates` stores estimates and margins of error;
+`demographic_sources` records download URLs, checksums and timestamps.
+
+Refresh from the official public summary files (no API/model key needed):
+
+```bash
+python -m get_data.import_demographics
+```
+
+Downloads are processed in a temporary directory. Only the local geography
+extract is retained. Reimport that extract without network access:
+
+```bash
+python -m get_data.import_demographics --snapshot data/demographics_2024.json
+```
+
+The importer validates a separate candidate before replacing the database.
+The normal database rebuild reapplies the bundled demographic extract so
+these measures are not lost. Refresh the extract separately to incorporate
+revisions to the same Census release. Changing the ACS release also requires
+matching primary estimates/geography; do not mix vintage years.
+
+Race-alone categories include Hispanic residents unless origin is specified.
+Never add a parent total to its subcategories. Named districts still use
+whole-tract approximations; old partner tracts are not a direct crosswalk.

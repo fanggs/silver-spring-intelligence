@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from answers.schema import SCHEMA_DESCRIPTION, COVERAGE_BLURB
 from answers.sql_guard import run, UnsafeQuery
 from answers.community_context import catalog, schema_context, used_sources, notes as community_notes
+from answers import demographic_context
 from answers.response_cache import AnswerCache
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -185,6 +186,7 @@ def coverage():
         conn.row_factory = sqlite3.Row
         primary = [dict(r) for r in conn.execute('SELECT * FROM data_sources ORDER BY dataset_id')]
     return {'primary_sources': primary, 'community_sources': catalog(DATABASE_PATH),
+            'demographic_measures': demographic_context.measures(DATABASE_PATH),
             'geography_note': 'Census place, current tract, and original partner tract geographies are distinct.'}
 
 
@@ -303,7 +305,7 @@ def _answer_question(q: Question):
 
     # 1. Claude writes the query. It never writes the numbers.
     sql_prompt = (
-        f"{SCHEMA_DESCRIPTION}\n\n{schema_context(DATABASE_PATH)}\n\n"
+        f"{SCHEMA_DESCRIPTION}\n\n{schema_context(DATABASE_PATH)}\n\n{demographic_context.schema_context(DATABASE_PATH)}\n\n"
         f"User question: {question}\n\n"
         "Write ONE SQLite SELECT query that answers it. Output only the SQL, "
         "no explanation and no markdown fences. If the question cannot be "
@@ -365,6 +367,8 @@ def _answer_question(q: Question):
         summary = f"OpenStreetMap shows {totals} in the selected area."
     if summary is None:
         summary = _place_count(question, executed_sql, rows)
+    if summary is None:
+        summary = _demographic_count(question, executed_sql, rows)
     if summary is None:
         summary = _single_listing_count(question, executed_sql, rows)
     if summary is None:
@@ -616,11 +620,35 @@ def _place_count(question, sql, rows):
     return prefix + f"The Census estimates that {estimate} Silver Spring residents are classified as {sex}."
 
 
+def _demographic_count(question, sql, rows):
+    """Format one fully covered returned demographic estimate without inference."""
+    if not (re.match(r'^how many\b', question, re.I) and len(rows) == 1
+            and 'demographic_estimates' in sql.lower()):
+        return None
+    row = rows[0]
+    value = row.get('estimate')
+    if type(value) is not int or value < 0 or not row.get('label') or not row.get('acs_vintage'):
+        return None
+    if row.get('available_tracts') != row.get('requested_tracts'):
+        return None
+    if re.search(r'\bsum\s*\(', sql, re.I) and row.get('requested_tracts') is None:
+        return None
+    if demographic_context.is_place(sql, rows):
+        area = 'the official Silver Spring Census place'
+    else:
+        with sqlite3.connect(f'file:{DATABASE_PATH}?mode=ro', uri=True) as con:
+            names = [r[0] for r in con.execute('SELECT DISTINCT name FROM places ORDER BY LENGTH(name) DESC')]
+        place = next((name for name in names if name.lower() in question.lower()), None)
+        area = 'the tract area used to approximate ' + place if place else 'the selected Census tracts'
+    label = ', '.join(reversed(str(row['label']).split(' > ')))
+    return f"{row['acs_vintage']} estimates {value:,} residents classified as {label} in {area}."
+
+
 def _answer_geography(sql, rows, highlights):
     """Separate official place estimates from a place-name point's tract."""
     text = sql.lower()
     point_or_tract = re.search(r'\b(?:businesses|tract_data|tract_history|community_\w+)\b', text)
-    official = 'place_data' in text or ('industry_employment' in text and _official_industry(text, rows))
+    official = 'place_data' in text or ('industry_employment' in text and _official_industry(text, rows)) or demographic_context.is_place(sql, rows)
     returned_ids = {str(r['geoid']) for r in rows if r.get('geoid') is not None}
     mixed = re.search(r'\bunion\b', text) or any(r.get('geography_type') not in (None, 'place') for r in rows)
     if official and not point_or_tract and not mixed and returned_ids <= {'2472450'}:
@@ -718,6 +746,7 @@ def _display_value(column, value):
         text = str(value)
         if column in {'metric', 'label'}:
             text = re.sub(r'\s*\(foot[- ]traffic proxy\)', '', text, flags=re.I).replace('_', ' ')
+            text = ', '.join(reversed(text.split(' > ')))
         return text if len(text) <= 180 else text[:180] + '… (full text below)'
     if _is_percentage(column):
         return f"{value:.1f}%"
@@ -738,13 +767,13 @@ def _answer_statistic(rows):
     if len(rows) != 1:
         return None
     counts = [(key, value) for key, value in rows[0].items()
-              if (key == 'count' or key.endswith('_count')) and type(value) is int and value >= 0
+              if (key in {'count', 'estimate'} or key.endswith('_count')) and type(value) is int and value >= 0
               # How many tracts went into a figure is method, not the answer.
               and not key.startswith('tract')]
     if len(counts) != 1:
         return None
     key, value = counts[0]
-    return {'value': value, 'label': _column_label(key)}
+    return {'value': value, 'label': _display_value('label', rows[0]['label']) if key == 'estimate' and rows[0].get('label') else _column_label(key)}
 
 
 def _answer_visual(sql, rows, listing_counts):
@@ -1000,6 +1029,16 @@ def _answer_notes(sql, rows, question):
     query = sql.lower()
     notes = []
     industry_place = "industry_employment" in query and _official_industry(query, rows)
+    if 'demographic_estimates' in query:
+        if any(row.get('available_tracts') != row.get('requested_tracts') for row in rows):
+            notes.append('Some selected tracts have missing estimates; the returned figure is incomplete and is not a full-area total.')
+        notes.append('Race and Hispanic-origin estimates use ACS 2020-2024. Race-alone categories include Hispanic residents unless an origin is specified; Hispanic origin overlaps race.')
+        if demographic_context.is_place(sql, rows):
+            notes.append('The Census estimate uses Silver Spring’s official Census boundary.')
+        elif _place_geoids(question):
+            notes.append('The mapped Census tracts approximate the named neighborhood or district.')
+        else:
+            notes.append('Race estimates describe the selected Census tracts, not a precise neighborhood boundary.')
     if "place_data" in query or industry_place:
         notes.append("The Census estimate uses Silver Spring’s official Census boundary.")
     if re.search(r"\b(?:female|male)_count\b", query):
@@ -1354,6 +1393,12 @@ def _sources(sql, geoids, rows):
     def census(code, title, geography, note, year=2024):
         add(f"ACS {year - 4}-{year}, Table {code}, {title} ({note})",
             ACS_TABLE_URL.format(code=code, geo=geography).replace("ACSDT5Y2024", f"ACSDT5Y{year}"))
+
+    for code in demographic_context.source_tables(sql, rows):
+        title = 'Race' if code == 'B02001' else 'Hispanic or Latino Origin by Race'
+        place = demographic_context.is_place(sql, rows)
+        census(code, title, CDP_GEO if place else geo,
+               'official Silver Spring Census place' if place else geo_note)
 
     is_place = "place_data" in text
     uses_tracts = not is_place or bool(re.search(r"\btract_(?:data|history)\b", text))
