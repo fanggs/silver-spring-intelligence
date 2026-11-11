@@ -132,7 +132,7 @@ button,input{font:inherit;}
 .app-question-row button:disabled{opacity:.6;cursor:wait;}
 .app-question-row button span{margin-left:14px;}
 .app-question-hint{margin-top:8px;color:var(--muted);font-size:12px;}
-.app-columns{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(340px,.8fr);grid-template-areas:"map answer";gap:18px;align-items:start;}
+.app-columns{display:grid;grid-template-columns:minmax(340px,.8fr) minmax(0,1.3fr);grid-template-areas:"answer map";gap:18px;align-items:start;}
 .app-map-panel{grid-area:map;}
 .app-answer-panel{grid-area:answer;}
 .app-answer-panel .app-panel-top{min-height:0;}
@@ -367,7 +367,7 @@ html{scroll-behavior:auto;}
 #rawResultsTable { border-collapse: collapse; font-size: 12px; }
 #rawResultsTable th, #rawResultsTable td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); min-width: 110px; max-width: 280px; overflow-wrap: anywhere; }
 @media (max-width: 900px) {
- .app-columns { grid-template-columns: minmax(0, 1fr); }
+ .app-columns { grid-template-columns: minmax(0, 1fr); grid-template-areas: "answer" "map"; }
  .app-answer-panel { order: -1; }
  .app-panel-top { flex-wrap: wrap; gap: 10px; }
  #map { height: 400px; }
@@ -380,3 +380,13 @@ html{scroll-behavior:auto;}
  .hero h1 { font-size: clamp(44px, 13vw, 72px); letter-spacing: -3px; }
  .mission-main h2 { font-size: clamp(36px, 12vw, 52px); }
 }
+
+.answer-statistic { padding: 12px 0; }
+.answer-statistic[hidden] { display: none; }
+.answer-statistic strong { display: block; font-size: clamp(32px, 6vw, 48px); line-height: 1.1; color: var(--forest); font-variant-numeric: tabular-nums; }
+.answer-statistic span { display: block; margin-top: 5px; font-size: 13px; color: var(--muted); }
+.listing-records { padding-left: 20px; max-height: 360px; overflow-y: auto; }
+.listing-records li { margin: 9px 0; font-size: 13px; overflow-wrap: anywhere; }
+.listing-records a { color: var(--forest); text-decoration: underline; }
+.map-legend-details summary { cursor: pointer; font-weight: 700; }
+.map-legend-details h4 { margin-top: 10px; }

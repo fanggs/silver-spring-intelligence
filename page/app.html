@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Ask evidence-backed questions about Silver Spring, Maryland, and see the public data behind every answer.">
     <title>CivicLens — Explore Silver Spring</title>
-    <link rel="stylesheet" href="style.css?v=answer-panel-1">
+    <link rel="stylesheet" href="style.css?v=answer-quality-2">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
@@ -45,6 +45,10 @@
                 <p id="answerState" class="answer-state" role="status">Ask a question to see a source-backed answer.</p>
                 <div id="answerResult" hidden>
                     <p id="answerText" class="app-answer-text" aria-live="polite"></p>
+                    <div id="answerStatistic" class="answer-statistic" hidden>
+                        <strong id="statisticValue"></strong>
+                        <span id="statisticLabel"></span>
+                    </div>
                     <figure id="answerVisual" class="answer-visual" hidden>
                         <figcaption id="answerVisualTitle"></figcaption>
                         <ul id="answerVisualItems"></ul>
@@ -56,6 +60,7 @@
                     <p id="answerNotes" class="app-answer-notes" hidden></p>
                     <details id="answerDetails" class="answer-details">
                         <summary>See supporting data and sources</summary>
+                        <p id="methodologyNotes" class="app-answer-notes"></p>
                         <div class="app-table-wrap">
                             <table id="supportTable" aria-label="Supporting data">
                                 <thead><tr id="supportHeads"></tr></thead>
@@ -69,6 +74,11 @@
                         <details id="fullResults" class="full-results" hidden>
                             <summary>Explore all returned fields</summary>
                             <div class="raw-table-wrap"><table id="rawResultsTable"></table></div>
+                        </details>
+                        <details id="listingDetails" class="full-results" hidden>
+                            <summary>Inspect the matching map listings</summary>
+                            <p id="listingRecordsStatus"></p>
+                            <ul id="listingRecords" class="listing-records"></ul>
                         </details>
                     </details>
                 </div>
@@ -98,6 +108,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=answer-panel-1"></script>
+    <script src="script.js?v=answer-quality-2"></script>
 </body>
 </html>

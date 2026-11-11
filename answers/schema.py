@@ -207,6 +207,16 @@ HOW TO ANSWER BUSINESS QUESTIONS
   Do not imply retail residents work locally or infer interest in the event.
 
 RULES FOR WRITING SQL
+- Retrieve only evidence directly relevant to the question. For a business
+  decision, count the requested business type and expose its mapped names;
+  do not dump all business categories or unrelated resident employment.
+  Include other measures when they answer a requested part of the question.
+- Listing counts do not measure foot traffic, demand, event interest or
+  competition intensity. Never label them as proxies for those measures.
+  Industry counts measure employed residents, not local workplace jobs.
+- Give result columns readable, factual aliases. Do not GROUP_CONCAT every
+  unrelated category. Do not invent missing capacities, availability, rents,
+  gender identity counts, or precise district boundaries.
 - HOUSING AFFORDABILITY: there is no rent or house-price column. Answer with
   median_income (excluding the 250001 top-code) plus the renter share for
   context. Return at most three tracts with the lowest median income. Income

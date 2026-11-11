@@ -178,9 +178,10 @@ function initAppPage() {
     function renderAnswer(payload) {
         const summary = typeof payload?.summary === "string" ? payload.summary.trim() : "";
         const answer = summary || (typeof payload?.answer === "string" ? payload.answer.trim() : "");
-        const notes = summary && Array.isArray(payload?.notes)
-            ? payload.notes.filter((note) => typeof note === "string").join(" ")
-            : "";
+        const allNotes = Array.isArray(payload?.notes) ? payload.notes.filter(note => typeof note === "string") : [];
+        const essential = allNotes.filter(note => /approximate|not measure self|do not measure foot/i.test(note));
+        const notes = summary ? essential.slice(0, 2).join(" ") : "";
+        element("methodologyNotes").textContent = allNotes.join(" ");
         const highlights = Array.isArray(payload?.highlight_geoids) ? payload.highlight_geoids : [];
         const sources = Array.isArray(payload?.sources) ? payload.sources : [];
 
@@ -188,7 +189,7 @@ function initAppPage() {
         // "area" means the answer is about Silver Spring as a whole, not a
         // selection inside it, so the map shades it softly instead of
         // lighting 19 tracts up as if they were a result.
-        highlightScope = payload?.highlight_scope === "area" ? "area" : "selection";
+        highlightScope = ["area", "boundary", "none"].includes(payload?.highlight_scope) ? payload.highlight_scope : "selection";
         updateHighlights();
         refreshLegendForSelection();
 
@@ -207,6 +208,8 @@ function initAppPage() {
         ui.details.open = false;
         renderVisual(payload?.visual);
         renderSupportingData(payload);
+        renderListingDetails(payload.listing_details);
+        renderStatistic(payload);
         ui.sources.replaceChildren();
 
         sources.forEach((source) => {
@@ -243,7 +246,7 @@ function initAppPage() {
         const full = document.getElementById("fullResults");
         if (raw && full) {
             raw.replaceChildren();
-            const records = !supporting && Array.isArray(payload.rows) ? payload.rows : [];
+            const records = Array.isArray(payload.rows) ? payload.rows : [];
             const fields = [...new Set(records.flatMap(row => Object.keys(row)))];
             full.hidden = !records.length;
             full.open = false;
@@ -295,6 +298,36 @@ function initAppPage() {
             tr.appendChild(td);
             ui.rows.appendChild(tr);
         }
+    }
+
+    function renderListingDetails(details) {
+        const section = element("listingDetails");
+        const list = element("listingRecords");
+        const status = element("listingRecordsStatus");
+        list.replaceChildren();
+        section.hidden = !Array.isArray(details?.rows) || !details.rows.length;
+        if (section.hidden) return;
+        status.textContent = details.truncated ? "Showing the first 200 matching records; the total above includes all matches." : `${details.rows.length} matching mapped records. Operating status is not verified.`;
+        details.rows.forEach(record => {
+            const item = document.createElement("li");
+            const link = document.createElement("a");
+            link.textContent = `${record.name || "Unnamed listing"} · ${String(record.category || "Unclassified").replaceAll("_", " ")}`;
+            const url = validUrl(record.source_url);
+            if (url) { link.href = url; link.target = "_blank"; link.rel = "noopener noreferrer"; }
+            item.append(link);
+            list.append(item);
+        });
+    }
+
+    function renderStatistic(payload) {
+        const section = element("answerStatistic");
+        section.hidden = true;
+        if (!Number.isInteger(payload.statistic?.value) || payload.statistic.value < 0) return;
+        element("statisticValue").textContent = payload.statistic.value.toLocaleString();
+        element("statisticLabel").textContent = String(payload.statistic.label || "Returned count");
+        // Keep the definition/scope in the answer rather than drawing a chart
+        // that implies more information than this one returned estimate.
+        section.hidden = false;
     }
 
     function renderVisual(visual) {
@@ -411,6 +444,12 @@ function initAppPage() {
     function updateHighlights(options) {
         if (!map) return;
         const keepView = Boolean(options && options.keepView);
+        if (boundaryLayer) boundaryLayer.setStyle({
+            color: highlightScope === "boundary" ? "#b9422a" : "#1d3326",
+            weight: 3, dashArray: highlightScope === "boundary" ? null : "6 4",
+            fill: highlightScope === "boundary", fillColor: "#ff795f", fillOpacity: 0.2
+        });
+        element("map").dataset.answerScope = highlightScope;
 
         const selectedLayers = [];
 
@@ -450,7 +489,7 @@ function initAppPage() {
             if (bounds.isValid()) {
                 map.fitBounds(bounds.pad(0.25), { maxZoom: 13 });
             }
-        } else if (highlightScope === "area") {
+        } else if (highlightScope === "area" || highlightScope === "boundary") {
             fitToBoundary();
         }
     }
@@ -613,8 +652,11 @@ function initAppPage() {
     ];
     const OTHER_GROUP = { key: "other", label: "Everything else", color: "#6f6f6f" };
 
-    function businessGroup(category) {
+    function businessGroup(category, storedGroup) {
         const text = String(category || "");
+        if (storedGroup === "food and drink") return BUSINESS_GROUPS.find(g => g.key === "food");
+        if (storedGroup === "retail") return BUSINESS_GROUPS.find(g => g.key === "shop");
+        if (storedGroup) return BUSINESS_GROUPS.filter(g => !["food", "shop"].includes(g.key)).find(g => g.test.test(text)) || OTHER_GROUP;
         return BUSINESS_GROUPS.find((g) => g.test.test(text)) || OTHER_GROUP;
     }
 
@@ -657,14 +699,17 @@ function initAppPage() {
         legendControl = L.control({ position: "topright" });
         legendControl.onAdd = function () {
             const box = L.DomUtil.create("div", "map-legend");
+            const disclosure = L.DomUtil.create("details", "map-legend-details", box);
+            const summary = L.DomUtil.create("summary", "", disclosure);
+            summary.textContent = `${total} mapped listings${scoped ? " here" : ""}`;
 
-            const title = L.DomUtil.create("h4", "", box);
+            const title = L.DomUtil.create("h4", "", disclosure);
             title.textContent = scoped ? "Businesses here" : "Businesses";
 
             [...BUSINESS_GROUPS, OTHER_GROUP].forEach((g) => {
                 const n = counts[g.key] || 0;
                 if (!n) return;
-                const row = L.DomUtil.create("div", "map-legend-row", box);
+                const row = L.DomUtil.create("div", "map-legend-row", disclosure);
                 const inside = describeGroup(detail && detail[g.key]);
                 if (inside) row.title = inside;
 
@@ -679,11 +724,11 @@ function initAppPage() {
             });
 
             if (!total) {
-                const empty = L.DomUtil.create("div", "map-legend-label", box);
+                const empty = L.DomUtil.create("div", "map-legend-label", disclosure);
                 empty.textContent = "None recorded here";
             }
 
-            const note = L.DomUtil.create("p", "map-legend-note", box);
+            const note = L.DomUtil.create("p", "map-legend-note", disclosure);
             // Says "recorded in" on purpose: this is OpenStreetMap's coverage,
             // not a claim about every business that exists.
             note.textContent = scoped
@@ -719,7 +764,7 @@ function initAppPage() {
 
             if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
 
-            const group = businessGroup(point?.category);
+            const group = businessGroup(point?.category, point?.category_group);
             counts[group.key] = (counts[group.key] || 0) + 1;
 
             const pin = L.circleMarker([latitude, longitude], {

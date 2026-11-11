@@ -15,16 +15,19 @@ import math
 import re
 import os
 import sqlite3
+import time
+from contextvars import ContextVar
 from pathlib import Path
 
 import anthropic
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from answers.schema import SCHEMA_DESCRIPTION, COVERAGE_BLURB
 from answers.sql_guard import run, UnsafeQuery
 from answers.community_context import catalog, schema_context, used_sources, notes as community_notes
+from answers.response_cache import AnswerCache
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATABASE_PATH = str(PROJECT_ROOT / "data" / "silverspring.db")
@@ -47,6 +50,8 @@ def _load_env() -> None:
 _load_env()
 MODEL = os.getenv("ANTHROPIC_MODEL") or MODEL
 client = None
+answer_cache = AnswerCache()
+stage_timings = ContextVar('stage_timings', default=None)
 
 app = FastAPI(title="CivicLens")
 app.add_middleware(
@@ -54,7 +59,23 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=['Server-Timing', 'X-CivicLens-Cache', 'X-CivicLens-Revision'],
 )
+
+
+@app.middleware('http')
+async def measure_request(request, call_next):
+    stages = []
+    token = stage_timings.set(stages)
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+        stages.append(('total', (time.perf_counter() - start) * 1000))
+        response.headers['Server-Timing'] = ', '.join(f'{name};dur={duration:.1f}' for name, duration in stages)
+        response.headers['X-CivicLens-Revision'] = os.getenv('RENDER_GIT_COMMIT', 'local')
+        return response
+    finally:
+        stage_timings.reset(token)
 
 
 class Question(BaseModel):
@@ -72,11 +93,17 @@ def _ask_claude(prompt: str, max_tokens: int = 700) -> str:
         if not key:
             raise ModelNotConfigured("Configure ANTHROPIC_API_KEY to enable natural-language answers")
         client = anthropic.Anthropic(api_key=key, timeout=45.0, max_retries=0)
-    resp = client.messages.create(
-        model=MODEL,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    started = time.perf_counter()
+    try:
+        resp = client.messages.create(
+            model=MODEL,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    finally:
+        stages = stage_timings.get()
+        if stages is not None:
+            stages.append(('query_model' if max_tokens == 1500 else 'summary_model', (time.perf_counter() - started) * 1000))
     # The response can contain thinking blocks before the text block, so
     # never assume content[0] is the answer — find the first text block.
     for block in resp.content:
@@ -87,6 +114,16 @@ def _ask_claude(prompt: str, max_tokens: int = 700) -> str:
         if text:
             return text.strip()
     raise RuntimeError("model returned no text block")
+
+
+def _run_query(sql, **options):
+    start = time.perf_counter()
+    try:
+        return run(DATABASE_PATH, sql, **options)
+    finally:
+        stages = stage_timings.get()
+        if stages is not None:
+            stages.append(('database', (time.perf_counter() - start) * 1000))
 
 
 # ---------------------------------------------------------------- endpoints
@@ -223,7 +260,7 @@ def businesses(limit: int = 10000, scope: str = "silver-spring"):
     conn = sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
-        """SELECT business_id, name, category, latitude, longitude,
+        """SELECT business_id, name, category, category_group, latitude, longitude,
                   geoid, source_name, source_url
            FROM businesses
            WHERE latitude IS NOT NULL AND longitude IS NOT NULL""" + clause +
@@ -236,7 +273,27 @@ def businesses(limit: int = 10000, scope: str = "silver-spring"):
 
 
 @app.post("/ask")
-def ask(q: Question):
+def ask(q: Question, response: Response = None, request: Request = None):
+    # Direct Python checks bypass the HTTP cache. Evaluations can explicitly
+    # request fresh model output using Cache-Control: no-cache.
+    key = None
+    if response is not None:
+        try:
+            key = answer_cache.key(DATABASE_PATH, MODEL, q.question)
+        except OSError:
+            pass
+        bypass = request is not None and 'no-cache' in request.headers.get('cache-control', '').lower()
+        cached = None if bypass or key is None else answer_cache.get(key)
+        response.headers['X-CivicLens-Cache'] = 'HIT' if cached is not None else 'MISS'
+        if cached is not None:
+            return cached
+    result = _answer_question(q)
+    if key is not None:
+        answer_cache.put(key, result)
+    return result
+
+
+def _answer_question(q: Question):
     """Plain-English question -> real answer, with the SQL and sources shown."""
     question = q.question.strip()
     if not question:
@@ -262,11 +319,11 @@ def ask(q: Question):
 
     # 2. Validate and run it read-only against the real database.
     try:
-        rows, executed_sql = run(DATABASE_PATH, sql)
+        rows, executed_sql = _run_query(sql)
     except UnsafeQuery as exc:
-        return _cannot(f"The generated query was rejected for safety: {exc}", sql=sql)
+        return _cannot("I couldn't safely prepare an answer. Please rephrase the question; this does not mean the data is missing.", sql=sql)
     except sqlite3.Error as exc:
-        return _cannot(f"That query didn't run: {exc}", sql=sql)
+        return _cannot("I couldn't retrieve the requested information. Please try a more specific question; this does not establish a data gap.", sql=sql)
 
     if not rows:
         return _cannot("No data matched that question.", sql=sql)
@@ -294,6 +351,8 @@ def ask(q: Question):
     if summary is None:
         summary = _place_count(question, executed_sql, rows)
     if summary is None:
+        summary = _single_listing_count(question, executed_sql, rows)
+    if summary is None:
         answer_prompt = (
             f"Question: {question}\n\n"
             f"These rows came back from the database:\n"
@@ -316,7 +375,7 @@ def ask(q: Question):
             "about related types. Give the mapped count and leave any rating of competition "
             "out unless the results include a meaningful benchmark. Describe map results "
             "as mapped listings. Counts alone cannot establish demand, "
-            "foot traffic, event interest, or whether a business is open. Income and renter share "
+            "foot traffic, event interest, or whether a business is open. Do not call counts a proxy for those measures, even if a returned label does. Income and renter share "
             "do not establish housing prices. Put boundary and source caveats only in the separate notes. "
             "Do not restate them "
             "or claim statistical significance unless the query tested it. Use only "
@@ -359,6 +418,9 @@ def ask(q: Question):
     # it, the answer is about the area rather than a selection inside it, so
     # the map should wash it rather than light 19 tracts up like results.
     scope = "area" if set(highlights) == set(SILVER_SPRING_GEOIDS) else "selection"
+    geography = _answer_geography(executed_sql, rows, highlights)
+    if geography['kind'] == 'census_place':
+        highlights, scope = [], 'boundary'
 
     return {
         "answer": " ".join(filter(None, (summary, next_step, *notes))),
@@ -366,9 +428,12 @@ def ask(q: Question):
         "next_step": next_step,
         "notes": notes,
         "visual": _answer_visual(executed_sql, rows, listing_counts),
+        "statistic": _answer_statistic(rows),
         "supporting_data": _supporting_data(rows),
+        "listing_details": _listing_details(executed_sql),
         "highlight_geoids": highlights,
         "highlight_scope": scope,
+        "geography": geography,
         "table": _table,
         "table_headers": _headers,
         "rows": rows,
@@ -441,7 +506,56 @@ def _place_count(question, sql, rows):
     if column == "population_count":
         return f"Silver Spring has an estimated population of {estimate} people."
     sex = column.removesuffix("_count")
-    return f"The Census estimates that {estimate} Silver Spring residents are classified as {sex}."
+    prefix = "Self-identified gender is not measured by this dataset. " if re.search(r'identif|gender', question, re.I) else ''
+    return prefix + f"The Census estimates that {estimate} Silver Spring residents are classified as {sex}."
+
+
+def _answer_geography(sql, rows, highlights):
+    """Separate official place estimates from a place-name point's tract."""
+    text = sql.lower()
+    point_or_tract = re.search(r'\b(?:businesses|tract_data|tract_history|community_\w+)\b', text)
+    official = 'place_data' in text or ('industry_employment' in text and _official_industry(text, rows))
+    returned_ids = {str(r['geoid']) for r in rows if r.get('geoid') is not None}
+    mixed = re.search(r'\bunion\b', text) or any(r.get('geography_type') not in (None, 'place') for r in rows)
+    if official and not point_or_tract and not mixed and returned_ids <= {'2472450'}:
+        return {'kind': 'census_place', 'id': '2472450', 'label': 'Silver Spring Census place',
+                'approximate': False, 'boundary_url': '/boundary'}
+    return {'kind': 'tract_approximation', 'geoids': highlights,
+            'label': 'Whole Census tracts', 'approximate': True}
+
+
+def _single_listing_count(question, sql, rows):
+    """Avoid a second model call for an unambiguous single count."""
+    if not (re.match(r'^how many\b', question, re.I) and len(rows) == 1
+            and re.search(r'\bfrom\s+businesses\b', sql, re.I)
+            and not re.search(r'\b(?:union|group\s+by|join)\b', sql, re.I)):
+        return None
+    counts = [(key, value) for key, value in rows[0].items()
+              if (key == 'count' or key.endswith('_count')) and type(value) is int]
+    if len(counts) != 1:
+        return None
+    key, count = counts[0]
+    label = key.removesuffix('_count').replace('_', ' ')
+    label = 'business' if label in ('count', 'business', 'listing') else label
+    with sqlite3.connect(f'file:{DATABASE_PATH}?mode=ro', uri=True) as con:
+        names = [r[0] for r in con.execute('SELECT DISTINCT name FROM places ORDER BY LENGTH(name) DESC')]
+    name = next((n for n in names if n.lower() in question.lower()), None)
+    area = f'the tract area used to approximate {name}' if name else 'the selected tract area'
+    return f'There are {count:,} mapped {label} listings in {area}.'
+
+
+def _listing_details(sql):
+    """Expose records behind simple aggregates using the original filter."""
+    if not re.match(r'^SELECT\s+COUNT\s*\(', sql, re.I) or re.search(r'\b(?:join|union|group\s+by|having)\b', sql, re.I):
+        return None
+    match = re.search(r'\bFROM\s+businesses\s+WHERE\s+(.+)', sql, re.I | re.S)
+    if not match:
+        return None
+    try:
+        records, _ = _run_query('SELECT name, category, geoid, source_url FROM businesses WHERE ' + match[1], max_rows=201)
+    except (UnsafeQuery, sqlite3.Error):
+        return None
+    return {'rows': records[:200], 'truncated': len(records) > 200}
 
 
 def _is_percentage(column):
@@ -490,7 +604,10 @@ def _display_value(column, value):
     if value is None:
         return "Not available"
     if type(value) not in (int, float):
-        return str(value)
+        text = str(value)
+        if column in {'metric', 'label'}:
+            text = re.sub(r'\s*\(foot[- ]traffic proxy\)', '', text, flags=re.I).replace('_', ' ')
+        return text if len(text) <= 180 else text[:180] + '… (full text below)'
     if _is_percentage(column):
         return f"{value:.1f}%"
     if "income" in column:
@@ -504,6 +621,17 @@ def _supporting_data(rows):
         "columns": [_column_label(column) for column in columns],
         "rows": [[_display_value(column, row.get(column)) for column in columns] for row in rows],
     }
+
+
+def _answer_statistic(rows):
+    if len(rows) != 1:
+        return None
+    counts = [(key, value) for key, value in rows[0].items()
+              if (key == 'count' or key.endswith('_count')) and type(value) is int and value >= 0]
+    if len(counts) != 1:
+        return None
+    key, value = counts[0]
+    return {'value': value, 'label': _column_label(key)}
 
 
 def _answer_visual(sql, rows, listing_counts):
@@ -772,6 +900,8 @@ def _answer_notes(sql, rows, question):
             notes.append("Whole Census tracts approximate the area for this result.")
     if "businesses" in query:
         notes.append("OpenStreetMap listings may be incomplete or out of date.")
+    if re.search(r'foot[- ]traffic|demand|proxy', json.dumps(rows), re.I) and 'businesses' in query:
+        notes.append('Business listing counts do not measure foot traffic or customer demand.')
     return list(dict.fromkeys(notes + community_notes(DATABASE_PATH, sql)))
 
 
