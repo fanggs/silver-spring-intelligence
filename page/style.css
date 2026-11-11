@@ -132,7 +132,10 @@ button,input{font:inherit;}
 .app-question-row button:disabled{opacity:.6;cursor:wait;}
 .app-question-row button span{margin-left:14px;}
 .app-question-hint{margin-top:8px;color:var(--muted);font-size:12px;}
-.app-columns{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(390px,.8fr);gap:18px;align-items:stretch;}
+.app-columns{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(340px,.8fr);grid-template-areas:"map answer";gap:18px;align-items:start;}
+.app-map-panel{grid-area:map;}
+.app-answer-panel{grid-area:answer;}
+.app-answer-panel .app-panel-top{min-height:0;}
 .app-map-panel,.app-answer-panel{min-width:0;padding:22px;border:1px solid var(--border);border-radius:18px;background:var(--white);}
 .app-panel-top{min-height:70px;display:flex;justify-content:space-between;align-items:start;gap:15px;}
 .app-panel-top h2{margin:7px 0 0;font-size:24px;line-height:1.1;letter-spacing:-.04em;}
@@ -157,17 +160,38 @@ button,input{font:inherit;}
 .answer-state.is-error{background:#fff1ec;color:#9a3e28;}
 .app-answer-text{margin:18px 0 12px;font-size:clamp(18px,1.4vw,22px);line-height:1.55;font-weight:550;overflow-wrap:anywhere;}
 .app-answer-notes{margin:0 0 16px;color:var(--muted);font-size:14px;line-height:1.5;}
-.app-sources,.app-table-wrap{padding-top:17px;margin-top:18px;border-top:1px solid var(--border);}
-.app-sources h3,.app-table-wrap h3{margin-bottom:11px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;}
+.answer-action{margin:16px 0;padding:12px 14px;border-left:3px solid var(--forest-light);background:var(--paper);border-radius:0 8px 8px 0;}
+.answer-action h3,.app-sources h3{margin-bottom:5px;font-size:14px;font-weight:700;}
+.answer-action p{font-size:15px;line-height:1.5;}
+.answer-visual{margin:16px 0;padding:12px 14px;border:1px solid var(--border);border-radius:10px;}
+.answer-visual figcaption{margin-bottom:10px;font-size:14px;font-weight:700;}
+.answer-visual ul{list-style:none;display:grid;gap:8px;}
+.answer-visual li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:13px;}
+.answer-visual strong{font-variant-numeric:tabular-nums;}
+.answer-bar-track{grid-column:1 / -1;height:7px;background:var(--paper-dark);border-radius:4px;overflow:hidden;}
+.answer-bar-fill{height:100%;background:var(--forest-light);}
+.answer-details{margin-top:12px;border-top:1px solid var(--border);}
+.answer-details summary{padding:13px 0;color:var(--forest);font-size:14px;font-weight:700;cursor:pointer;}
+.app-table-wrap{overflow-x:auto;padding-bottom:8px;}
+#supportTable{width:100%;border-collapse:collapse;font-size:13px;}
+#supportTable th,#supportTable td{min-width:7rem;padding:8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top;overflow-wrap:anywhere;}
+#supportTable th{color:var(--muted);font-weight:700;}
+.app-sources{margin:12px 0 3px;}
 .app-sources ul{padding-left:19px;}
-.app-sources li{margin-bottom:9px;color:var(--muted);font-size:13px;line-height:1.45;}
+.app-sources li{margin:6px 0;color:var(--muted);font-size:13px;line-height:1.45;}
 .app-sources a{color:var(--forest-light);text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;}
 .app-sources a:hover{color:var(--ink);}
-#supportTable{width:100%;border-collapse:collapse;font-size:13px;}
-#supportTable th,#supportTable td{padding:11px 9px;border-bottom:1px solid var(--border);text-align:left;}
-#supportTable thead th{color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase;}
-#supportTable td:last-child{text-align:right;font-variant-numeric:tabular-nums;}
-#supportTable tbody th{font-weight:500;}
+@media (max-width:760px){
+    .app-columns{grid-template-columns:minmax(0,1fr);grid-template-areas:"answer" "map";}
+    .app-header{min-height:60px;gap:10px;}
+    .app-header > p{display:none;}
+    .app-shell{padding-top:23px;}
+    .app-intro h1{font-size:clamp(32px,7.5vw,44px);}
+    .app-question-row button{min-width:62px;padding:0 14px;}
+    .app-question-row button span{display:none;}
+    .app-map-panel,.app-answer-panel{padding:16px;}
+    #map{height:340px;}
+}
 .leaflet-container{font-family:Arial,Helvetica,sans-serif;}
 .leaflet-control-attribution{font-size:11px !important;}
 .landing-sources{padding:80px 5%;border-top:1px solid var(--border);}
@@ -177,49 +201,6 @@ button,input{font:inherit;}
 @media (prefers-reduced-motion:reduce){
 html{scroll-behavior:auto;}
 *{transition-duration:.01ms !important;animation-duration:.01ms !important;}
-}
-
-/* Supporting values table — fixed columns so rows line up cleanly. */
-#supportTable {
-    width: 100%;
-    table-layout: fixed;
-    border-collapse: collapse;
-}
-
-#supportTable th,
-#supportTable td {
-    padding: 0.5rem 0.75rem;
-    text-align: left;
-    vertical-align: middle;
-    font-weight: 400;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.18);
-}
-
-#supportTable thead th {
-    font-weight: 600;
-    font-size: 0.85rem;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    opacity: 0.75;
-}
-
-/* Place name takes the space; the number stays narrow and right-aligned
-   so digits line up column-wise and are easy to compare. */
-#supportTable th:first-child,
-#supportTable td:first-child { width: 62%; }
-
-#supportTable th:last-child,
-#supportTable td:last-child {
-    width: 38%;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
-
-#supportTable td.support-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 /* Map legend — the dots meant nothing without it. */
