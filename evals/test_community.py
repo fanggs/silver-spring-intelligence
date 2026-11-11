@@ -185,7 +185,46 @@ class CommunityTests(unittest.TestCase):
         missing = []
         ok = main._uses_returned_numbers("No, there aren't 100 cafes; there are 16.", [{'cafe_count': 16}], None, (), missing)
         self.assertFalse(ok)
-        self.assertEqual(missing, [100.0])
+        self.assertEqual(missing, ['100'])
+
+    def test_mixed_measures_in_a_union_get_a_neutral_column(self):
+        # The live b3d52ec/01f396d query: venue counts stacked under employment.
+        sql = ("SELECT 'Retail' AS label, employed_residents AS employed_residents FROM industry_employment "
+               "UNION ALL SELECT category AS label, COUNT(*) AS employed_residents FROM community_venues GROUP BY category")
+        rows = [{'label': 'Retail', 'employed_residents': 3231}, {'label': 'Candidate event venue: hotel', 'employed_residents': 5}]
+        fixed = main._neutral_union_columns(rows, sql)
+        self.assertEqual(fixed[1], {'label': 'Candidate event venue: hotel', 'value': 5})
+        # One table: the column means one thing, so it keeps its name.
+        same = "SELECT name, capacity FROM community_venues UNION ALL SELECT name, capacity FROM community_venues"
+        self.assertEqual(main._neutral_union_columns([{'name': 'x', 'capacity': 3}], same), [{'name': 'x', 'capacity': 3}])
+
+    def test_a_hotel_is_rejected_when_the_data_has_five(self):
+        rows = [{'label': 'Candidate event venue: community_centre', 'value': 2},
+                {'label': 'Candidate event venue: events_venue', 'value': 1},
+                {'label': 'Candidate event venue: hotel', 'value': 5}]
+        missing = []
+        self.assertFalse(main._uses_returned_numbers('Venues include a community centre, an events venue, and a hotel.', rows, None, (), missing))
+        self.assertEqual(len(missing), 2)  # the centre and the hotel; 1 events venue is right
+        self.assertTrue(main._uses_returned_numbers('Venues include 2 community centres, an events venue, and 5 hotels.', rows))
+        # A list of individual places: each row is one place; total_count is the list size.
+        listed = [{'name': 'Silver Spring Recreation and Aquatic Center', 'category': 'community_centre', 'total_count': 7}]
+        self.assertTrue(main._uses_returned_numbers('The 7 include a community centre.', listed))
+        # A category stored in a column the query happened to call geoid.
+        odd = [{'measure': 'Venues', 'geoid': 'community_centre', 'value': 2}]
+        self.assertFalse(main._uses_returned_numbers('Venues include a community centre.', odd))
+
+    def test_counts_are_never_presented_as_foot_traffic_or_demand(self):
+        rows = [{'food_and_drink_count': 78}]
+        bad = 'Fenton has 78 food and drink listings, suggesting solid foot traffic in the area.'
+        self.assertFalse(main._uses_returned_numbers(bad, rows))
+        self.assertFalse(main._uses_returned_numbers('Fenton has 78 food and drink listings, so the area has strong foot traffic potential.', rows))
+        self.assertFalse(main._uses_returned_numbers('Food and drink dominates with 78 listings, so retail foot traffic exists, but bookstore demand is unknown.', rows))
+        for fine in ['Fenton has 78 food and drink listings, but demand is unknown.',
+                     "This count alone doesn't tell you about foot traffic.",
+                     'Mapped listings cannot show customer demand or foot traffic.']:
+            self.assertTrue(main._uses_returned_numbers(fine, rows), fine)
+        # A next step asking about foot traffic is advice, not a claim.
+        self.assertTrue(main._uses_returned_numbers('Ask staff how busy foot traffic typically is.', rows, claims=False))
 
     def test_numbers_written_as_words_are_checked_too(self):
         # The live answer on b3d52ec: the rows listed 5 hotels, the text said "six".
