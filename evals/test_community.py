@@ -198,6 +198,24 @@ class CommunityTests(unittest.TestCase):
         same = "SELECT name, capacity FROM community_venues UNION ALL SELECT name, capacity FROM community_venues"
         self.assertEqual(main._neutral_union_columns([{'name': 'x', 'capacity': 3}], same), [{'name': 'x', 'capacity': 3}])
 
+    def test_retail_workers_are_not_labelled_or_summed_as_listings(self):
+        # Live on 4870b1b: 496 retail workers came back under 'listing_count'.
+        sql = ("WITH fv AS (SELECT geoid FROM places WHERE LOWER(name) LIKE '%fenton%') "
+               "SELECT 'Bookstores' AS metric_label, COUNT(*) AS listing_count FROM businesses WHERE geoid IN (SELECT geoid FROM fv) "
+               "UNION ALL SELECT 'Retail trade employed residents' AS metric_label, SUM(employed_residents) AS listing_count "
+               "FROM industry_employment WHERE geoid IN (SELECT geoid FROM fv)")
+        rows = main._neutral_union_columns([{'metric_label': 'Bookstores', 'listing_count': 2},
+                                            {'metric_label': 'Retail trade employed residents', 'listing_count': 496}], sql)
+        self.assertEqual([set(r) for r in rows], [{'metric_label', 'value'}] * 2)
+        self.assertEqual(main._supporting_data(rows)['columns'][1], 'Value')
+        _, totals = main._exact_totals(rows, sql)
+        self.assertNotIn(498.0, totals)  # 2 bookstores + 496 residents is not a total
+
+    def test_markdown_is_stripped_from_answers(self):
+        self.assertEqual(main._plain_text('**Yes**, retail data exists: *about* 3,231.'), 'Yes, retail data exists: about 3,231.')
+        self.assertEqual(main._plain_text('## Answer\n- 5 hotels'), 'Answer\n5 hotels')
+        self.assertEqual(main._plain_text('3 * 4 and 2*3 stay as they are'), '3 * 4 and 2*3 stay as they are')
+
     def test_a_hotel_is_rejected_when_the_data_has_five(self):
         rows = [{'label': 'Candidate event venue: community_centre', 'value': 2},
                 {'label': 'Candidate event venue: events_venue', 'value': 1},
