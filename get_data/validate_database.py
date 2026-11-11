@@ -80,6 +80,9 @@ def validate_database(path=DATABASE_PATH):
     if 'community_sources' in tables:
         from .import_community import validate_community
         validate_community(path)
+    if 'demographic_estimates' in tables:
+        from .import_demographics import validate_demographics
+        validate_demographics(path)
     print(f"Validation passed: {len(tract_ids)} tracts, {count} listings, official place estimates, industry, neighborhoods and both historical vintages.")
 
 
