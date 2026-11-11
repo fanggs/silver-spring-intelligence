@@ -376,7 +376,10 @@ def _answer_question(q: Question):
             "Lead with the direct answer in everyday language. If the question asks whether data "
             "exists on something specific, answer that first, whatever order the rows are in. "
             "Write category codes as plain words (sports_centre is 'sports centre') and large "
-            "numbers with thousands separators. For a lookup or trend, use one "
+            "numbers with thousands separators. Write every count in digits, never as a word "
+            "('6', not 'six'). Never count rows yourself, for example how many of the listed "
+            "venues are hotels: state such a count only if a row or the exact totals give it, "
+            "otherwise name the items without a number. For a lookup or trend, use one "
             "short sentence with the requested totals or rates. Keep names, margins of error, "
             "and extra numbers in the supporting data unless asked for them. "
             "If a measure is missing, say what is missing before any related fact. "
@@ -617,7 +620,12 @@ def _single_listing_count(question, sql, rows):
         return None
     key, count = counts[0]
     label = key.removesuffix('_count').removesuffix('_listing').replace('_', ' ')
-    label = 'business' if label in ('count', 'business', 'listing') else label
+    if label in ('count', 'business', 'listing'):
+        # A generic column name: name what the query actually filtered on
+        # (osm_amenity = 'restaurant' -> "restaurant"), so 43 restaurants are
+        # never described as 43 businesses. Only one exact filter qualifies.
+        filters = re.findall(r"\b(?:osm_amenity|osm_shop|category)\s*=\s*'([a-z_]+)'", sql, re.I)
+        label = filters[0].replace('_', ' ') if len(set(filters)) == 1 else 'business'
     with sqlite3.connect(f'file:{DATABASE_PATH}?mode=ro', uri=True) as con:
         names = [r[0] for r in con.execute('SELECT DISTINCT name FROM places ORDER BY LENGTH(name) DESC')]
     name = next((n for n in names if n.lower() in question.lower()), None)
@@ -1171,9 +1179,41 @@ def _verified_sentences(text, rows, sql=None, extra=()):
     return " ".join(kept)
 
 
+_UNITS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+          "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+          "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+          "dozen": 12}
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+         "seventy": 70, "eighty": 80, "ninety": 90}
+_ONES = {"one": 1, **{k: v for k, v in _UNITS.items() if v < 10}}
+_NUMBER_WORD = re.compile(
+    r"\b(?:(?P<tens>" + "|".join(_TENS) + r")(?:[\s-](?P<ones>" + "|".join(_ONES) + r"))?"
+    r"|(?P<unit>" + "|".join(_UNITS) + r"))(?:\s+(?P<scale>hundred|thousand))?\b", re.I)
+
+
+def _word_numbers(text):
+    """Counts written as words ('six hotels', 'twenty-one', 'three hundred').
+
+    A word number is a figure like any other, so it must pass the same check
+    as digits. 'one' alone is not read as a count: it is far more often
+    'one step' or 'no one' than a statistic.
+    """
+    found = set()
+    for match in _NUMBER_WORD.finditer(text):
+        if match.group("tens"):
+            value = _TENS[match.group("tens").lower()] + _ONES.get((match.group("ones") or "").lower(), 0)
+        else:
+            value = _UNITS[match.group("unit").lower()]
+        scale = (match.group("scale") or "").lower()
+        value *= 100 if scale == "hundred" else 1000 if scale == "thousand" else 1
+        found.add(float(value))
+    return found
+
+
 def _uses_returned_numbers(answer, rows, sql=None, extra=()):
     """Reject new written numbers, including values copied from the question.
 
+    Numbers count whether written as digits ('6') or as words ('six').
     One exception: a calendar year that the executed query itself filtered on
     (e.g. '2025-01-01' in a date range). That year names the scope the
     database answered for; it is not a statistic, so "In 2025, ..." passes.
@@ -1181,7 +1221,8 @@ def _uses_returned_numbers(answer, rows, sql=None, extra=()):
     pattern = r"(?<![\w.])[+−-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
 
     def numbers(value):
-        return {float(match.replace(",", "").replace("−", "-")) for match in re.findall(pattern, value)}
+        digits = {float(match.replace(",", "").replace("−", "-")) for match in re.findall(pattern, value)}
+        return digits | _word_numbers(value)
 
     if CALC_ERROR in answer:
         return False
