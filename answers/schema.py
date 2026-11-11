@@ -235,6 +235,16 @@ RULES FOR WRITING SQL
   select an address from a table that has none, and never select NULL or
   placeholder columns. Filter in whichever table has the field asked about
   (cuisine is in community_businesses; venues are in community_venues).
+- OPENING HOURS, WEBSITE AND PHONE: only when the question asks for them, join
+  place_locations (osm_ref, source_url, name, opening_hours, website, phone)
+  ON place_locations.source_url = businesses.source_url, or
+  ON place_locations.osm_ref = community_businesses.osm_id / community_venues.osm_id.
+  opening_hours is OpenStreetMap syntax as mapped (e.g. "Mo-Fr 11:00-21:00");
+  NULL means not mapped, not closed. No table has bookings or live availability.
+  NEVER filter on opening_hours in WHERE (no LIKE on days or times): its
+  formats vary, and hours with no day names (e.g. "12:00-21:00") mean every
+  day. Select the matching places with their opening_hours, including NULL,
+  and let the answer read them.
 - A text label for a count must describe exactly what was counted. If the
   filter includes several categories, name them (e.g. 'Events venues and
   hotels'), never a broader or narrower word than the filter.

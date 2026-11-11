@@ -51,6 +51,9 @@ CREATE TABLE place_locations (
     longitude      REAL NOT NULL,
     address        TEXT,                       -- NULL when OpenStreetMap has none
     address_basis  TEXT CHECK (address_basis IN ('listing', 'building')),
+    opening_hours  TEXT,                       -- OSM opening_hours syntax, as mapped
+    website        TEXT,
+    phone          TEXT,
     retrieved_at   TEXT NOT NULL
 );
 """
@@ -83,6 +86,15 @@ OSM_API = "https://api.openstreetmap.org/api/0.6/"
 
 def log(message):
     print(message, flush=True)
+
+
+def place_details(tags):
+    """Opening hours, website and phone as mapped in OpenStreetMap, or None."""
+    website = tags.get("website") or tags.get("contact:website")
+    if website and not website.lower().startswith(("http://", "https://")):
+        website = "https://" + website
+    return {"opening_hours": tags.get("opening_hours"), "website": website,
+            "phone": tags.get("phone") or tags.get("contact:phone")}
 
 
 def overpass(query, attempts=2, wait=5, timeout=75):
@@ -259,6 +271,7 @@ def build_locations(db_path=DATABASE_PATH, *, fetch_tags=own_tags, fetch_buildin
             tags = fetch_tags(list(places))
             basis = {}
             for ref, place in places.items():
+                place.update(place_details(tags.get(ref, {})))
                 address = format_address(tags.get(ref, {})) or place["address"]
                 place["address"] = address
                 if address:
@@ -268,13 +281,24 @@ def build_locations(db_path=DATABASE_PATH, *, fetch_tags=own_tags, fetch_buildin
                      if not p["address"] and (scope is None or p["geoid"] in scope)}
             log(f"Step 2/2: building outlines for {len(still)} places without their own address (Overpass)")
             from_buildings, skipped = fetch_buildings(still)
+            # Overpass fails at random, so a building address found on an
+            # earlier run is kept when this run did not reach that place.
+            # Without this, addresses would appear and vanish week to week.
+            previous = {}
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='place_locations'").fetchone():
+                previous = dict(db.execute("SELECT osm_ref, address FROM place_locations "
+                                           "WHERE address_basis='building' AND address IS NOT NULL"))
+            for ref in still:
+                if ref not in from_buildings and ref in previous:
+                    from_buildings[ref] = previous[ref]
             for ref, address in from_buildings.items():
                 places[ref]["address"], basis[ref] = address, "building"
             db.execute("DROP TABLE IF EXISTS place_locations")
             db.executescript(SCHEMA)
-            db.executemany("INSERT INTO place_locations VALUES (?,?,?,?,?,?,?,?)",
+            db.executemany("INSERT INTO place_locations VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                            [(ref, OSM_URL + ref, p["name"], p["latitude"], p["longitude"], p["address"],
-                             basis.get(ref), now) for ref, p in sorted(places.items())])
+                             basis.get(ref), p.get("opening_hours"), p.get("website"), p.get("phone"), now)
+                            for ref, p in sorted(places.items())])
         validate_database(candidate)
         candidate.replace(db_path)
     counts = {key: sum(1 for ref in places if basis.get(ref) == key) for key in ("listing", "building")}

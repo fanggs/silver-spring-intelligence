@@ -65,6 +65,82 @@ class AddressBuildTests(unittest.TestCase):
                 self.assertEqual(businesses, original.execute("SELECT COUNT(*) FROM businesses").fetchone()[0])
 
 
+class RefreshTests(unittest.TestCase):
+    def test_building_address_from_an_earlier_run_survives_an_overpass_outage(self):
+        with tempfile.TemporaryDirectory() as folder:
+            copy = Path(folder) / "copy.db"
+            shutil.copy(DB, copy)
+            with closing(sqlite3.connect(copy)) as con:
+                places = fetch_addresses.collect_places(con)
+            ref = next(r for r, p in places.items() if not p["address"])
+            no_tags = lambda wanted: {}
+            with patch.object(fetch_addresses, "validate_database"):
+                fetch_addresses.build_locations(copy, fetch_tags=no_tags, buildings="all",
+                                                fetch_buildings=lambda pts: ({ref: "5 Kept Road"}, 0))
+                fetch_addresses.build_locations(copy, fetch_tags=no_tags, buildings="all",
+                                                fetch_buildings=lambda pts: ({}, len(pts)))  # Overpass down
+            with closing(sqlite3.connect(copy)) as con:
+                self.assertEqual(con.execute("SELECT address, address_basis FROM place_locations WHERE osm_ref=?", (ref,)).fetchone(),
+                                 ("5 Kept Road", "building"))
+
+    def test_hours_website_and_phone_come_from_tags(self):
+        details = fetch_addresses.place_details({"opening_hours": "Mo-Fr 11:00-21:00", "website": "example.com", "phone": "+1 301 555 0100"})
+        self.assertEqual(details, {"opening_hours": "Mo-Fr 11:00-21:00", "website": "https://example.com", "phone": "+1 301 555 0100"})
+
+    def test_county_refresh_replaces_only_when_every_check_passes(self):
+        from get_data import refresh_county
+        with tempfile.TemporaryDirectory() as folder:
+            copy = Path(folder) / "copy.db"
+            shutil.copy(DB, copy)
+            with closing(sqlite3.connect(copy)) as con:
+                con.row_factory = sqlite3.Row
+                current = {s: [dict(r) for r in con.execute(f"SELECT * FROM community_{s}")] for s in refresh_county.DATASETS}
+
+            def as_county(source_id, rows):
+                """Turn stored rows back into county records, as the API returns them."""
+                out = []
+                for r in rows:
+                    if source_id == "crime":
+                        out.append({"incident_id": r["incident_id"], "date": r["when"], "crimename1": f"Crime Against {r['against']}" if r["against"] else None,
+                                    "crimename2": r["category"], "crimename3": r["detail"], "place": r["place"], "victims": r["victims"],
+                                    "latitude": str(r["latitude"]), "longitude": str(r["longitude"])})
+                    elif source_id == "permits":
+                        out.append({"permitno": r["permitno"], "worktype": r["worktype"], "usecode": r["usecode"], "issueddate": r["issued"],
+                                    "declaredvaluation": r["valuation"], "applicationtype": r["applicationtype"],
+                                    "location": {"latitude": r["latitude"], "longitude": r["longitude"]}})
+                    else:
+                        out.append({"incident_id": r["incident_id"], "start_time": r["when"], "address": r["address"],
+                                    "latitude": r["latitude"], "longitude": r["longitude"]})
+                return out
+
+            by_dataset = {spec[0]: s for s, spec in refresh_county.DATASETS.items()}
+            new_crime = {"incident_id": "TEST1", "date": "2099-01-01", "crimename1": "Crime Against Property", "crimename2": "Theft",
+                         "crimename3": "LARCENY", "place": "Street", "victims": "1", "latitude": "38.99", "longitude": "-77.03"}
+
+            def good(dataset, column):
+                records = as_county(by_dataset[dataset], current[by_dataset[dataset]])
+                return records + ([new_crime] if by_dataset[dataset] == "crime" else [])
+
+            report = refresh_county.refresh(copy, fetcher=good, updated=lambda d: "2099-01-01")
+            self.assertTrue(report["replaced"])
+            self.assertEqual(report["crime"]["rows_after"], len(current["crime"]) + 1)
+            with closing(sqlite3.connect(copy)) as con:
+                self.assertEqual(con.execute("SELECT COUNT(*) FROM community_crime").fetchone()[0], len(current["crime"]) + 1)
+                self.assertIsNotNone(con.execute("SELECT retrieved_at FROM community_sources WHERE source_id='crime'").fetchone()[0])
+
+            # The county renames a field: dates come back empty. Nothing may be replaced.
+            def broken(dataset, column):
+                records = good(dataset, column)
+                if by_dataset[dataset] == "crime":
+                    records = [dict(r, date=None) for r in records]
+                return records
+            before = copy.read_bytes()
+            report = refresh_county.refresh(copy, fetcher=broken, updated=lambda d: "2099-01-01")
+            self.assertFalse(report["replaced"])
+            self.assertTrue(report["crime"]["problems"])
+            self.assertEqual(copy.read_bytes(), before)
+
+
 class AttachPlacesTests(unittest.TestCase):
     LOOKUP = {"node/1": {"osm_ref": "node/1", "name": "Ikko Sushi", "latitude": 38.99, "longitude": -77.02,
                          "address": "8211 Georgia Avenue, Silver Spring", "address_basis": "listing"},

@@ -847,12 +847,7 @@ function initAppPage() {
                 ? `in ${names.slice(0, 2).join(" · ")}`
                 : "Silver Spring, Maryland";
 
-            popup.append(title, category, where, ...placeFacts({
-                address: point.address,
-                address_basis: point.address_basis,
-                latitude: Number(point.latitude),
-                longitude: Number(point.longitude)
-            }));
+            popup.append(title, category, where, ...placeFacts(validPlace(point) || {}));
             return popup;
     }
 
@@ -868,8 +863,22 @@ function initAppPage() {
             address_basis: value.address_basis,
             latitude,
             longitude,
-            source_url: value.source_url
+            source_url: value.source_url,
+            opening_hours: typeof value.opening_hours === "string" ? value.opening_hours.trim() : "",
+            website: validUrl(value.website) || "",
+            phone: typeof value.phone === "string" ? value.phone.trim() : ""
         };
+    }
+
+    // OpenStreetMap hours syntax, made readable without reinterpreting it:
+    // "Mo-Fr 11:00-21:00; Sa,Su 12:00-22:00" -> one line per rule, day names spelled out.
+    function readableHours(hours) {
+        const days = { Mo: "Mon", Tu: "Tue", We: "Wed", Th: "Thu", Fr: "Fri", Sa: "Sat", Su: "Sun", PH: "Holidays" };
+        if (hours === "24/7") return ["Open 24 hours, every day"];
+        return hours.split(";").map(rule => rule.trim()).filter(Boolean)
+            // A rule that starts with a time names no days, which means every day.
+            .map(rule => /^\d/.test(rule) ? `Every day ${rule}` : rule)
+            .map(rule => rule.replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su|PH)\b/g, day => days[day]).replace(/,(?=\S)/g, ", "));
     }
 
     // Address line, where it came from, and outbound map links. Google Maps
@@ -885,6 +894,38 @@ function initAppPage() {
             note.className = "popup-group";
             note.textContent = "Address of the building it is in";
             facts.push(note);
+        }
+        if (place.opening_hours) {
+            const hours = document.createElement("div");
+            hours.className = "popup-hours";
+            const label = document.createElement("strong");
+            label.textContent = "Hours (as mapped; check before visiting)";
+            hours.append(label);
+            readableHours(place.opening_hours).forEach(line => {
+                const row = document.createElement("div");
+                row.textContent = line;
+                hours.append(row);
+            });
+            facts.push(hours);
+        }
+        if (place.website || place.phone) {
+            const contact = document.createElement("div");
+            contact.className = "popup-links";
+            if (place.website) {
+                const site = document.createElement("a");
+                site.href = place.website;
+                site.target = "_blank";
+                site.rel = "noopener noreferrer";
+                site.textContent = "Website";
+                contact.append(site);
+            }
+            if (place.phone) {
+                const call = document.createElement("a");
+                call.href = "tel:" + place.phone.replace(/[^\d+]/g, "");
+                call.textContent = place.phone;
+                contact.append(call);
+            }
+            facts.push(contact);
         }
         if (Number.isFinite(place.latitude) && Number.isFinite(place.longitude)) {
             const links = document.createElement("div");

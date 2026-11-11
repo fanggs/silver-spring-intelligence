@@ -308,8 +308,8 @@ def businesses(limit: int = 10000, scope: str = "silver-spring"):
     lookup = _place_lookup(point["source_url"] for point in points)
     for point in points:
         place = lookup.get(_osm_ref(point["source_url"]))
-        point["address"] = place["address"] if place else None
-        point["address_basis"] = place["address_basis"] if place else None
+        for key in ("address", "address_basis", "opening_hours", "website", "phone"):
+            point[key] = place.get(key) if place else None
     # Returns a plain array so the map can iterate it directly.
     return points
 
@@ -437,6 +437,10 @@ def _answer_question(q: Question):
                "places if useful, and say their addresses and map locations are in the table below. "
                if locations else "") +
             "Never state latitude or longitude coordinates. "
+            "Opening hours are OpenStreetMap text as mapped: hours with no day names mean every "
+            "day; a missing value means the hours are not mapped (unknown), never that the place "
+            "is closed. Say how many places have no hours mapped instead of leaving them out, and "
+            "say hours should be checked before visiting. "
             "Lead with the direct answer in everyday language. If the question asks whether data "
             "exists on something specific, answer that first, whatever order the rows are in. "
             "Write category codes as plain words (sports_centre is 'sports centre') and large "
@@ -758,8 +762,8 @@ def _listing_details(sql):
     lookup = _place_lookup(record.get('source_url') for record in records[:200])
     for record in records[:200]:
         place = lookup.get(_osm_ref(record.get('source_url')))
-        record['address'] = place['address'] if place else None
-        record['address_basis'] = place['address_basis'] if place else None
+        for key in ('address', 'address_basis', 'opening_hours', 'website', 'phone'):
+            record[key] = place.get(key) if place else None
     return {'rows': records[:200], 'truncated': len(records) > 200}
 
 
@@ -1422,6 +1426,7 @@ def _attach_places(rows, sql):
             "address_basis": new.get("address_basis"),
             "latitude": latitude, "longitude": longitude,
             "source_url": "https://www.openstreetmap.org/" + ref_of(row) if ref_of(row) else None,
+            **{key: (place or {}).get(key) for key in ("opening_hours", "website", "phone")},
         } if located else None)
         enriched.append(new)
     return enriched, (locations if any(locations) else None)
@@ -1669,7 +1674,11 @@ def _sources(sql, geoids, rows):
         add("Downtown district and neighborhood mappings use whole tracts",
             "https://montgomeryplanning.org/planning/communities/east-county/silver-spring/silver-spring-downtown-plan/")
     for source in used_sources(DATABASE_PATH, sql):
-        add(source['label']+' (partner snapshot; '+str(source['data_vintage'] or 'source date unconfirmed')+')', source['source_url'])
+        if source['retrieved_at']:
+            # Refreshed straight from the publisher (get_data.refresh_county).
+            add(f"{source['label']} ({source['data_vintage'] or 'source data'}, retrieved {str(source['retrieved_at'])[:10]})", source['source_url'])
+        else:
+            add(source['label']+' (partner snapshot; '+str(source['data_vintage'] or 'source date unconfirmed')+')', source['source_url'])
     if not out:
         census("B01003", "Total Population", CDP_GEO if is_place else geo,
                "official Silver Spring Census place" if is_place else geo_note)
