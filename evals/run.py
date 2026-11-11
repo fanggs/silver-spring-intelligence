@@ -28,7 +28,7 @@ def now():
 def request_json(url, timeout, body=None):
     """Never retry POSTs: a retry could incur another model charge."""
     request = Request(url, data=None if body is None else json.dumps(body).encode(),
-                      headers={"Accept": "application/json", "Content-Type": "application/json"})
+                      headers={"Accept": "application/json", "Content-Type": "application/json", "Cache-Control": "no-cache"})
     started = time.monotonic()
     result = {"started_at": now(), "http_status": None}
     try:

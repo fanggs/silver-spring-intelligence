@@ -1,0 +1,21 @@
+{
+  "description": "Actual SQL returned by the hosted site during the November 11, 2026 audit. Inputs only; new model generation is not simulated as live.",
+  "cases": [
+    {
+      "question": "Should I open a bookstore in Fenton Village?",
+      "sql": "WITH fenton_tracts AS (\n  SELECT DISTINCT geoid FROM places WHERE LOWER(name) LIKE '%fenton%'\n)\nSELECT\n  'bookstores_in_fenton_village' AS metric,\n  COUNT(*) AS value,\n  GROUP_CONCAT(name, ', ') AS detail,\n  MIN(source_url) AS source_url\nFROM businesses\nWHERE osm_shop = 'books'\n  AND geoid IN (SELECT geoid FROM fenton_tracts)\n\nUNION ALL\n\nSELECT\n  'all_mapped_businesses_in_fenton_village' AS metric,\n  COUNT(*) AS value,\n  GROUP_CONCAT(DISTINCT category) AS detail,\n  MIN(source_url) AS source_url\nFROM businesses\nWHERE geoid IN (SELECT geoid FROM fenton_tracts)\n\nUNION ALL\n\nSELECT\n  'food_and_drink_listings_in_fenton_village (foot-traffic proxy)' AS metric,\n  COUNT(*) AS value,\n  GROUP_CONCAT(DISTINCT category) AS detail,\n  MIN(source_url) AS source_url\nFROM businesses\nWHERE category_group = 'food and drink'\n  AND geoid IN (SELECT geoid FROM fenton_tracts)\n\nUNION ALL\n\nSELECT\n  'retail_trade_employed_residents_silver_spring_place' AS metric,\n  employed_residents AS value,\n  'margin_of_error ' || margin_of_error AS detail,\n  source_url\nFROM industry_employment\nWHERE geography_type = 'place'\n  AND geoid = '2472450'\n  AND industry = 'Retail trade'"
+    },
+    {
+      "question": "We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here?",
+      "sql": "```sql\nSELECT 'Retail employment (Silver Spring place)' AS metric,\n       CAST(employed_residents AS TEXT) AS value,\n       'margin of error +/- ' || margin_of_error AS note,\n       acs_vintage,\n       source_url\nFROM industry_employment\nWHERE geography_type = 'place'\n  AND geoid = '2472450'\n  AND industry = 'Retail trade'\n\nUNION ALL\n\nSELECT 'Event/meeting venues in Silver Spring tracts' AS metric,\n       category AS value,\n       'count=' || COUNT(*) || CASE WHEN COUNT(capacity) > 0 THEN '; capacity data present for some rows (unverified)' ELSE '; capacity unknown for all' END AS note,\n       NULL AS acs_vintage,\n       MIN(source_url) AS source_url\nFROM community_venues\nWHERE geoid IN (\n  '24031701601','24031701602','24031701900','24031702000','24031702101',\n  '24031702200','24031702301','24031702302','24031702401','24031702402',\n  '24031702501','24031702502','24031702503','24031702602','24031702603',\n  '24031702604','24031702700','24031702800','24031702900'\n)\nGROUP BY category\n\nORDER BY metric;\n```"
+    },
+    {
+      "question": "How many people who identify as female live in Silver Spring?",
+      "sql": "SELECT female_count,\n       female_margin_of_error,\n       'Census sex estimate (not gender identity)' AS note,\n       source_url\nFROM place_data\nWHERE geoid = '2472450'"
+    },
+    {
+      "question": "How many restaurants are in Fenton Village?",
+      "sql": "SELECT COUNT(*) AS restaurant_count, MIN(source_url) AS source_url\nFROM businesses\nWHERE osm_amenity = 'restaurant'\n  AND geoid IN (SELECT geoid FROM places WHERE LOWER(name) = LOWER('Fenton Village'))"
+    }
+  ]
+}
