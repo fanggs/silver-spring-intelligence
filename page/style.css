@@ -378,3 +378,24 @@ html{scroll-behavior:auto;}
    failure now, so the form carries its own spacing. */
 .app-question-form { margin-top: 26px; }
 .app-banner[hidden] { display: none; }
+
+/* Full source fields remain available without crowding the direct answer. */
+.full-results { margin-top: 18px; min-width: 0; }
+.full-results summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+.raw-table-wrap { max-width: 100%; overflow-x: auto; margin-top: 12px; }
+#rawResultsTable { border-collapse: collapse; font-size: 12px; }
+#rawResultsTable th, #rawResultsTable td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); min-width: 110px; max-width: 280px; overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+ .app-columns { grid-template-columns: minmax(0, 1fr); }
+ .app-answer-panel { order: -1; }
+ .app-panel-top { flex-wrap: wrap; gap: 10px; }
+ #map { height: 400px; }
+ .app-question-row button { min-width: 82px; padding: 0 14px; }
+}
+
+@media (max-width: 700px) {
+ .hero, .mission-section, .mission-bottom { grid-template-columns: minmax(0, 1fr); }
+ .hero-content, .hero-visual, .mission-main { min-width: 0; }
+ .hero h1 { font-size: clamp(44px, 13vw, 72px); letter-spacing: -3px; }
+ .mission-main h2 { font-size: clamp(36px, 12vw, 52px); }
+}

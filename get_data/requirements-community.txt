@@ -1,0 +1,2 @@
+# Needed only to import/rebuild the partner snapshot; API remains SQLite.
+duckdb==2.0.0

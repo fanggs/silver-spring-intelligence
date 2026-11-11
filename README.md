@@ -123,3 +123,18 @@ Aryan Nimmagadda (map and interface)
 Run `python3 evals/run.py --label baseline` to capture the four fixed
 stakeholder questions against the live API. See [evals/README.md](evals/README.md)
 for local runs, saved evidence, release comparisons and exit codes.
+
+## Combined community data (local integration branch)
+
+The primary Census-backed SQLite snapshot now also contains supplementary
+partner data for venues, transit, permits, reported incidents, parcels, and
+additional community fields. Primary estimates and deduplicated business
+records remain intact. `GET /coverage` lists the installed sources and limits.
+
+Questions use the normal model flow with a schema catalog generated from the
+installed tables; there is no preset-only question router. Sources actually
+used are cited, and the frontend can expand every returned field. A model key
+is still required for natural-language questions; map endpoints work without it.
+
+See [combined data handoff](docs/combined-data.md) for import/rebuild commands,
+geography rules, source attribution, unknown dates and offline verification limits.
