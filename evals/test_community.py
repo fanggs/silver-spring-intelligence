@@ -158,6 +158,35 @@ class CommunityTests(unittest.TestCase):
         sentence = main._single_listing_count('How many restaurants are in Fenton Village?', sql, [{'listing_count': 43, 'source_url': 'x'}])
         self.assertEqual(sentence, 'There are 43 mapped restaurant listings in the tract area used to approximate Fenton Village.')
 
+    def test_mixed_venue_count_gets_a_database_breakdown(self):
+        area = "geoid IN (SELECT geoid FROM places WHERE LOWER(name) LIKE '%silver spring%')"
+        with closing(sqlite3.connect(DB)) as con:
+            n = dict(con.execute(f"SELECT category, COUNT(*) FROM community_venues WHERE {area} "
+                                 "AND category IN ('hotel','community_centre','events_venue') GROUP BY category").fetchall())
+        total = sum(n.values())
+        sql = (f"SELECT 'Venues' AS metric, COUNT(*) AS value FROM community_venues v WHERE v.{area} "
+               "AND v.category IN ('hotel','community_centre','events_venue') "
+               f"UNION ALL SELECT 'Hotels' AS metric, COUNT(*) AS value FROM community_venues v WHERE v.{area} "
+               "AND v.category = 'hotel'")
+        rows = [{'metric': 'Venues', 'value': total}, {'metric': 'Hotels', 'value': n['hotel']}]
+        facts, values = main._category_breakdowns(sql, rows)
+        self.assertIn(f"{n['hotel']} hotel", facts[0])
+        self.assertIn('Venues', facts[0])
+        self.assertIn(float(n['hotel']), values)
+        # The hotels row sits inside the venue total: flagged, never added.
+        self.assertTrue(any('already included' in f for f in facts))
+
+    def test_breakdown_is_dropped_when_it_does_not_reconcile(self):
+        sql = "SELECT COUNT(*) AS value FROM community_venues WHERE category IN ('hotel','museum')"
+        facts, values = main._category_breakdowns(sql, [{'value': 999}])
+        self.assertEqual((facts, values), ([], set()))
+
+    def test_guard_reports_which_numbers_failed(self):
+        missing = []
+        ok = main._uses_returned_numbers("No, there aren't 100 cafes; there are 16.", [{'cafe_count': 16}], None, (), missing)
+        self.assertFalse(ok)
+        self.assertEqual(missing, [100.0])
+
     def test_numbers_written_as_words_are_checked_too(self):
         # The live answer on b3d52ec: the rows listed 5 hotels, the text said "six".
         hotels = [{'label': f'Candidate event venue: Hotel {i} (hotel)'} for i in range(5)]

@@ -379,7 +379,11 @@ def _answer_question(q: Question):
             "numbers with thousands separators. Write every count in digits, never as a word "
             "('6', not 'six'). Never count rows yourself, for example how many of the listed "
             "venues are hotels: state such a count only if a row or the exact totals give it, "
-            "otherwise name the items without a number. For a lookup or trend, use one "
+            "otherwise name the items without a number. Never repeat a number from the "
+            "question: say 'your event', not 'a 50-person event'. Write the next step without "
+            "numbers ('call a few of the hotels', not 'call 2-3'). If the question asks for "
+            "something the rows cannot show, such as capacity, say plainly that it is missing "
+            "and still name the matching places. For a lookup or trend, use one "
             "short sentence with the requested totals or rates. Keep names, margins of error, "
             "and extra numbers in the supporting data unless asked for them. "
             "If a measure is missing, say what is missing before any related fact. "
@@ -443,6 +447,20 @@ def _answer_question(q: Question):
                 + " ".join(total_facts)
                 + " If you state a total, use one of these exactly."
             )
+        # A count that mixes several kinds of place gets its own breakdown
+        # from the database, so the answer names what the places are (5
+        # hotels, 2 community centres) rather than a label the model invented.
+        breakdown_facts, breakdown_values = _category_breakdowns(executed_sql, rows)
+        if breakdown_facts:
+            answer_prompt += (
+                " Breakdowns by type, counted by the database: " + " ".join(breakdown_facts)
+                + " When you mention such a count, give it with this breakdown, e.g. "
+                "'8 possible venues: 5 hotels, 2 community centres and 1 events venue'. "
+                "Name each kind as the data does. The data has no capacity or meeting-room "
+                "information, so call hotels and community centres possible venues and never "
+                "call a hotel a conference venue."
+            )
+            total_values = set(total_values) | breakdown_values
         operands = _returned_numbers(rows) | _returned_numbers(display_rows) | set(total_values)
         last_sections = None
         calculations = []
@@ -458,14 +476,18 @@ def _answer_question(q: Question):
             sections = re.split(r"\s*(?:\*\*)?\bnext steps?(?:\*\*)?\s*:\s*(?:\*\*)?\s*", response, maxsplit=1, flags=re.IGNORECASE)
             candidate = sections[0].strip()
             last_sections = sections
-            if candidate and _uses_returned_numbers(candidate, display_rows, executed_sql, allowed_extra):
+            unverified = []
+            if candidate and _uses_returned_numbers(candidate, display_rows, executed_sql, allowed_extra, unverified):
                 summary = candidate
                 if len(sections) == 2:
                     next_step = sections[1].strip() or None
                 break
             if attempt == 0:
-                answer_prompt += (" Your last answer stated a figure that is not in the rows. Restate it "
-                                  "using only figures exactly as returned, or [[calc: ...]] for any calculation.")
+                named = ", ".join(_format_calculated(n) for n in unverified)
+                answer_prompt += (f" Your last answer stated {named or 'a figure'}, which the rows do not "
+                                  "contain (a number repeated from the question counts too). Rewrite it without "
+                                  "that number, using only figures exactly as returned, or [[calc: ...]] for "
+                                  "any calculation. Your last answer was: " + response)
         if summary is None and last_sections:
             # Both attempts stated at least one figure the database did not
             # return. Keep only the sentences whose every number checks, so
@@ -1140,6 +1162,81 @@ def _format_calculated(value):
     return f"{value:,.1f}"
 
 
+_CATEGORY_FILTER = re.compile(
+    r"((?:\w+\.)?category)\s*(?:IN\s*\(([^)]*)\)|=\s*('[^']*'))", re.I)
+
+
+def _count_parts(sql):
+    """Each single-row COUNT in the query, with its table, filter and categories.
+
+    Only plain parts qualify: one COUNT, no GROUP BY, a WHERE clause and a
+    category filter. Anything else is skipped rather than guessed at.
+    """
+    parts = []
+    for text in re.split(r"\bUNION\s+ALL\b", sql or "", flags=re.I):
+        if not re.search(r"\bCOUNT\s*\(", text, re.I) or re.search(r"\bGROUP\s+BY\b", text, re.I):
+            continue
+        clause = re.search(r"\bFROM\s+(.+?)\bWHERE\b(.+)$", text, re.I | re.S)
+        category = _CATEGORY_FILTER.search(text)
+        if not clause or not category:
+            continue
+        where = re.sub(r"\b(?:ORDER\s+BY|LIMIT)\b.*$", "", clause.group(2), flags=re.I | re.S).strip()
+        values = re.findall(r"'([^']*)'", category.group(2) or category.group(3))
+        rest = re.sub(r"\s+", " ", where.replace(category.group(0), "")).strip().lower()
+        parts.append({"from": clause.group(1).strip(), "where": where, "column": category.group(1),
+                      "categories": set(values), "scope": (clause.group(1).split()[0].lower(), rest)})
+    return parts
+
+
+def _row_label(rows, value):
+    """The text label of the one returned row holding this count, if exactly one does."""
+    matches = [row for row in rows if any(type(v) is int and v == value for v in row.values())]
+    if len(matches) != 1:
+        return None
+    texts = [v for k, v in matches[0].items() if isinstance(v, str) and "url" not in k and k != "geoid"]
+    return texts[0] if texts else None
+
+
+def _category_breakdowns(sql, rows):
+    """Database-counted breakdowns for counts that mix several kinds of place.
+
+    For a COUNT filtered to several categories (category IN ('hotel', ...)),
+    re-run the same filter grouped by category, read-only, and keep it only
+    if the parts add up to the count the query returned. Also flag a count
+    whose categories sit entirely inside another count over the same table
+    and area, so a total and its own part are never presented as separate.
+    Returns (facts for the prompt, numbers the answer may state).
+    """
+    facts, values = [], set()
+    parts = _count_parts(sql)
+    for part in parts:
+        if len(part["categories"]) < 2:
+            continue
+        breakdown_sql = (f"SELECT {part['column']} AS category, COUNT(*) AS n FROM {part['from']} "
+                         f"WHERE {part['where']} GROUP BY {part['column']} ORDER BY n DESC, 1")
+        try:
+            counted, _ = _run_query(breakdown_sql)
+        except Exception:
+            continue
+        total = sum(r["n"] for r in counted)
+        if not counted or total not in {v for row in rows for v in row.values() if type(v) is int}:
+            continue  # Does not reconcile with the returned count: say nothing.
+        label = _row_label(rows, total)
+        kinds = ", ".join(f"{r['n']:,} {str(r['category']).replace('_', ' ')}" for r in counted)
+        facts.append(f"The {total:,}" + (f" in '{label}'" if label else "") + f" are: {kinds}.")
+        values.update(float(r["n"]) for r in counted)
+        part["total"], part["label"] = total, label
+    for inner in parts:
+        for outer in parts:
+            if (inner is not outer and outer.get("total") and inner["scope"] == outer["scope"]
+                    and inner["categories"] < outer["categories"]):
+                name = ", ".join(sorted(c.replace("_", " ") for c in inner["categories"]))
+                facts.append(f"The {name} count is already included in the {outer['total']:,}"
+                             + (f" ('{outer['label']}')" if outer["label"] else "")
+                             + ": never present them as separate groups or add them together.")
+    return facts, values
+
+
 def _split_sentences(text):
     """Split at '. ', '! ', '? ' and line breaks; '3.5' and 'U.S.' stay whole."""
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
@@ -1210,7 +1307,7 @@ def _word_numbers(text):
     return found
 
 
-def _uses_returned_numbers(answer, rows, sql=None, extra=()):
+def _uses_returned_numbers(answer, rows, sql=None, extra=(), missing=None):
     """Reject new written numbers, including values copied from the question.
 
     Numbers count whether written as digits ('6') or as words ('six').
@@ -1237,7 +1334,10 @@ def _uses_returned_numbers(answer, rows, sql=None, extra=()):
             # are evidence too. Exclude URLs/opaque IDs as numerical claims.
             if isinstance(value, str) and key not in {"source_url", "duplicate_source_url", "geoid", "source_tract_id", "business_id", "osm_id", "incident_id"}:
                 allowed.update(numbers(value))
-    return numbers(answer) <= allowed
+    unsupported = numbers(answer) - allowed
+    if missing is not None:
+        missing.extend(sorted(unsupported))
+    return not unsupported
 
 
 def _sources(sql, geoids, rows):
