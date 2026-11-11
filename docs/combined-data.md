@@ -91,6 +91,27 @@ sources. Obtain a rebuilt partner snapshot to refresh these records; no nightly
 scheduler or metadata polling has been configured. DuckDB is not needed by the
 API runtime, only the import step.
 
+## Addresses and map locations
+
+`place_locations` holds one row per OpenStreetMap place referenced by
+`businesses`, `community_businesses` and `community_venues`: its snapshot
+coordinates and, where OpenStreetMap has one, its street address. The address
+is the place's own `addr:*` tags (`address_basis = 'listing'`) or, failing
+that, the tags of the building outline the point sits inside (`'building'`).
+Nothing is guessed: no nearest-address matching and no paid geocoder, so some
+places have no address and are shown on the map by coordinates only.
+
+```bash
+python -m get_data.fetch_addresses
+```
+
+`build_database` runs this automatically. **Re-run it after importing a new
+partner snapshot**, so new places get addresses. The API reads the table to
+attach each listed place's address and map location in code; the model never
+selects or joins addresses. Rows that stand for a group of places (GROUP BY,
+or `MIN(source_url)`) get no address, because no single address is true for
+them.
+
 ## Validation limits
 
 Offline checks exercise the actual database and API with explicitly simulated

@@ -114,6 +114,10 @@ def build_snapshot(output, *, business_payload=None, place_payload=None, partner
         if demographic_snapshot.exists():
             from .import_demographics import import_demographics
             import_demographics(json.loads(demographic_snapshot.read_text()), candidate, candidate)
+        # Addresses and map locations for every listed place, after all the
+        # place tables exist. Reads OpenStreetMap like the business fetch.
+        from .fetch_addresses import build_locations
+        build_locations(candidate)
         validate_database(candidate)
         candidate.replace(output)
     print(f"Saved validated database to {output}")

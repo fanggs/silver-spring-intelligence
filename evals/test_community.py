@@ -57,7 +57,7 @@ class CommunityTests(unittest.TestCase):
     def test_variations_reach_model_without_keyword_rejections(self):
         sql=f"SELECT name, capacity, website, source_url FROM community_venues WHERE geoid IN ({FENTON}) ORDER BY name"
         seen=[]
-        def provider(prompt,max_tokens):
+        def provider(prompt,max_tokens,**_):
             seen.append(prompt)
             return sql if 'User question:' in prompt else 'See the mapped venue options and their supplied details.'
         for question in ['Which event venues are in Fenton Village?', 'Can you list places to host an e-commerce panel around Fenton?', 'Show me venue names and capacities for Fenton Village.']:

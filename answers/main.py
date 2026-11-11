@@ -16,6 +16,7 @@ import re
 import os
 import sqlite3
 import time
+from contextlib import closing
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,24 +90,54 @@ class ModelNotConfigured(RuntimeError):
     """The data is available, but no inference provider has been configured."""
 
 
-def _ask_claude(prompt: str, max_tokens: int = 700) -> str:
+class ModelTruncated(RuntimeError):
+    """The model hit max_tokens: its text may be cut off and must not be used."""
+
+
+# The model thinks before it writes (adaptive thinking is on by default for
+# this model). Effort sets how much. Measured on the eval questions: "medium"
+# wrote correct, runnable SQL every time; "low" failed a two-table query and
+# missed venues; the default "high" spent up to 1,570 tokens on one query,
+# which overran the old 1,500-token cap and returned no text at all. The cap
+# is a ceiling, not a charge: only tokens actually used are billed.
+SQL_EFFORT, SQL_MAX_TOKENS = "medium", 8000
+ANSWER_EFFORT, ANSWER_MAX_TOKENS = "medium", 4000
+
+
+def _ask_claude(prompt: str, max_tokens: int = 700, *, effort: str | None = None,
+                cache_prefix: str | None = None, stage: str = "summary_model") -> str:
+    """One model call. Returns the text, or raises; never returns cut-off text.
+
+    cache_prefix: a leading part of `prompt` that is identical on every
+    request (the database description, about 9,000 tokens). It is sent as
+    its own block marked for prompt caching, so repeat questions within a
+    few minutes read it at a tenth of the input price.
+    """
     global client
     if client is None:
         key = os.getenv("ANTHROPIC_API_KEY", "").strip()
         if not key:
             raise ModelNotConfigured("Configure ANTHROPIC_API_KEY to enable natural-language answers")
-        client = anthropic.Anthropic(api_key=key, timeout=45.0, max_retries=0)
+        client = anthropic.Anthropic(api_key=key, timeout=60.0, max_retries=0)
+    content = prompt
+    if cache_prefix and prompt.startswith(cache_prefix) and len(prompt) > len(cache_prefix):
+        content = [{"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
+                   {"type": "text", "text": prompt[len(cache_prefix):]}]
+    options = {"output_config": {"effort": effort}} if effort else {}
     started = time.perf_counter()
     try:
         resp = client.messages.create(
             model=MODEL,
             max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": content}],
+            **options,
         )
     finally:
         stages = stage_timings.get()
         if stages is not None:
-            stages.append(('query_model' if max_tokens == 1500 else 'summary_model', (time.perf_counter() - started) * 1000))
+            stages.append((stage, (time.perf_counter() - started) * 1000))
+    if getattr(resp, "stop_reason", None) == "max_tokens":
+        raise ModelTruncated("the model's response hit max_tokens and may be cut off")
     # The response can contain thinking blocks before the text block, so
     # never assume content[0] is the answer — find the first text block.
     for block in resp.content:
@@ -272,8 +303,15 @@ def businesses(limit: int = 10000, scope: str = "silver-spring"):
         args + (limit,),
     ).fetchall()
     conn.close()
+    points = [dict(r) for r in rows]
+    # Street address for the map popup, from place_locations (OpenStreetMap).
+    lookup = _place_lookup(point["source_url"] for point in points)
+    for point in points:
+        place = lookup.get(_osm_ref(point["source_url"]))
+        point["address"] = place["address"] if place else None
+        point["address_basis"] = place["address_basis"] if place else None
     # Returns a plain array so the map can iterate it directly.
-    return [dict(r) for r in rows]
+    return points
 
 
 @app.post("/ask")
@@ -304,20 +342,32 @@ def _answer_question(q: Question):
         return _cannot("Please ask a question.")
 
     # 1. Claude writes the query. It never writes the numbers.
-    sql_prompt = (
+    # The database description is the same on every request, so it leads the
+    # prompt and is cached; only the question part changes.
+    schema_prefix = (
         f"{SCHEMA_DESCRIPTION}\n\n{schema_context(DATABASE_PATH)}\n\n{demographic_context.schema_context(DATABASE_PATH)}\n\n"
+    )
+    sql_prompt = (
+        schema_prefix +
         f"User question: {question}\n\n"
         "Write ONE SQLite SELECT query that answers it. Output only the SQL, "
         "no explanation and no markdown fences. If the question cannot be "
         "answered from these tables, output exactly: CANNOT_ANSWER"
     )
     try:
-        sql = _ask_claude(sql_prompt, max_tokens=1500)
+        sql = _ask_claude(sql_prompt, max_tokens=SQL_MAX_TOKENS, effort=SQL_EFFORT,
+                          cache_prefix=schema_prefix, stage="query_model")
     except ModelNotConfigured:
         return _cannot("AI answers are not configured. The data is available, but an administrator must configure the model key before questions can run.")
-    except Exception as exc:
+    except ModelTruncated:
+        _log_gap(question, "model_truncated")
+        return _cannot("That question needed a longer query than I can write in one go. Try asking for one thing at a time.")
+    except anthropic.APIConnectionError as exc:
         _log_gap(question, "model_error", type(exc).__name__)
-        return _cannot(f"Could not reach the language model ({type(exc).__name__}).")
+        return _cannot("Could not reach the language model. Please try again in a moment.")
+    except Exception as exc:
+        _log_gap(question, "model_error", f"{type(exc).__name__}: {exc}")
+        return _cannot("The language model did not return a usable answer. Please try again or rephrase the question.")
 
     if "CANNOT_ANSWER" in sql.upper():
         # The model judged that no installed table can answer this. This is
@@ -340,6 +390,9 @@ def _answer_question(q: Question):
         return _cannot("No data matched that question.", sql=sql)
 
     rows = _neutral_union_columns(rows, executed_sql)
+    # Each listed place gets its street address and map location from
+    # place_locations, in code: the model never selects or joins addresses.
+    rows, locations = _attach_places(rows, executed_sql)
 
     notes = _answer_notes(executed_sql, rows, question)
     # Tell the user plainly when the list was cut off. It goes first so the
@@ -379,6 +432,11 @@ def _answer_question(q: Question):
             f"These rows came back from the database:\n"
             f"{json.dumps(display_rows, indent=2)}\n\n"
             f"Notes displayed separately: {' '.join(notes)}\n\n"
+            + ("Every listed place is shown below your answer in a table with its street address, and "
+               "clicking it shows it on the map. Do not repeat addresses in your answer: name a few "
+               "places if useful, and say their addresses and map locations are in the table below. "
+               if locations else "") +
+            "Never state latitude or longitude coordinates. "
             "Lead with the direct answer in everyday language. If the question asks whether data "
             "exists on something specific, answer that first, whatever order the rows are in. "
             "Write category codes as plain words (sports_centre is 'sports centre') and large "
@@ -472,7 +530,7 @@ def _answer_question(q: Question):
         calculations = []
         for attempt in range(2):
             try:
-                response = _ask_claude(answer_prompt, max_tokens=450)
+                response = _ask_claude(answer_prompt, max_tokens=ANSWER_MAX_TOKENS, effort=ANSWER_EFFORT)
             except Exception as exc:
                 _log_gap(question, "model_error", type(exc).__name__, executed_sql)
                 break
@@ -539,7 +597,7 @@ def _answer_question(q: Question):
         "notes": notes,
         "visual": _answer_visual(executed_sql, rows, listing_counts),
         "statistic": _answer_statistic(rows),
-        "supporting_data": _supporting_data(rows),
+        "supporting_data": _supporting_data(rows, locations),
         "listing_details": _listing_details(executed_sql),
         "highlight_geoids": highlights,
         "highlight_scope": scope,
@@ -694,9 +752,14 @@ def _listing_details(sql):
     if not match:
         return None
     try:
-        records, _ = _run_query('SELECT name, category, geoid, source_url FROM businesses WHERE ' + match[1], max_rows=201)
+        records, _ = _run_query('SELECT name, category, geoid, source_url, latitude, longitude FROM businesses WHERE ' + match[1], max_rows=201)
     except (UnsafeQuery, sqlite3.Error):
         return None
+    lookup = _place_lookup(record.get('source_url') for record in records[:200])
+    for record in records[:200]:
+        place = lookup.get(_osm_ref(record.get('source_url')))
+        record['address'] = place['address'] if place else None
+        record['address_basis'] = place['address_basis'] if place else None
     return {'rows': records[:200], 'truncated': len(records) > 200}
 
 
@@ -707,7 +770,9 @@ def _is_percentage(column):
 _HIDDEN_FIELDS = {"geoid", "source_url", "state_fips", "county_fips", "tract_code",
                   "latitude", "longitude", "centroid_latitude", "centroid_longitude",
                   "business_id", "geography_type", "duplicate_source_url", "geometry_geojson",
-                  "period_start", "period_end"}
+                  "period_start", "period_end", "address_basis",
+                  # The same list total on every row; the answer states it once.
+                  "total_count"}
 
 _COLUMN_LABELS = {
     "population_count":                    "residents",
@@ -758,12 +823,17 @@ def _display_value(column, value):
     return f"{value:,.1f}" if isinstance(value, float) else f"{value:,}"
 
 
-def _supporting_data(rows):
+def _supporting_data(rows, locations=None):
     columns = list(dict.fromkeys(key for row in rows for key in row if key not in _HIDDEN_FIELDS))
-    return {
+    data = {
         "columns": [_column_label(column) for column in columns],
         "rows": [[_display_value(column, row.get(column)) for column in columns] for row in rows],
     }
+    # One entry per row, aligned with "rows": where that place is, so the page
+    # can show it on the map. None for rows that are not a single place.
+    if locations and any(locations):
+        data["locations"] = locations
+    return data
 
 
 def _answer_statistic(rows):
@@ -1284,6 +1354,77 @@ def _plain_text(text):
     text = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), text)
     text = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"\1", text)
     return re.sub(r"(?m)^\s*(?:#{1,6}\s+|[-*•]\s+)", "", text)
+
+
+_OSM_REF = re.compile(r"(?:^|openstreetmap\.org/)((?:node|way|relation)/\d+)$")
+# A query that groups places, or keeps one sample link per group, returns rows
+# that each stand for many places: no single address is true for them.
+_GROUPED_PLACES = re.compile(r"\bGROUP\s+BY\b|\b(?:MIN|MAX|GROUP_CONCAT)\s*\(\s*(?:DISTINCT\s+)?"
+                             r"(?:\w+\.)?(?:source_url|osm_id|name)\b", re.I)
+
+
+def _osm_ref(value):
+    match = _OSM_REF.search(str(value or "").strip())
+    return match.group(1) if match else None
+
+
+def _place_lookup(urls):
+    """place_locations rows for these OSM links or ids, keyed by osm_ref."""
+    refs = sorted({ref for ref in map(_osm_ref, urls) if ref})
+    found = {}
+    if not refs:
+        return found
+    try:
+        with closing(sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)) as con:
+            con.row_factory = sqlite3.Row
+            for start in range(0, len(refs), 500):
+                chunk = refs[start:start + 500]
+                for row in con.execute("SELECT * FROM place_locations WHERE osm_ref IN (%s)" % ",".join("?" * len(chunk)), chunk):
+                    found[row["osm_ref"]] = dict(row)
+    except sqlite3.Error:
+        return {}  # An older database without place_locations: answer without addresses.
+    return found
+
+
+def _attach_places(rows, sql):
+    """Add each listed place's street address and map location, in code.
+
+    Only when every row is one place (no grouping, no sample link per
+    group). The address comes from place_locations (OpenStreetMap: the
+    place's own tags, or the building it sits inside); a place with no
+    mapped address keeps None and is still shown on the map by its
+    coordinates. Null placeholder columns the query invented are dropped.
+    Returns (rows, locations) with locations aligned to rows.
+    """
+    if not rows or _GROUPED_PLACES.search(sql or ""):
+        return rows, None
+
+    def ref_of(row):
+        return next(filter(None, (_osm_ref(row.get(key)) for key in ("source_url", "duplicate_source_url", "osm_id"))), None)
+
+    lookup = _place_lookup(ref_of(row) for row in rows)
+    enriched, locations = [], []
+    for row in rows:
+        new = {key: value for key, value in row.items() if "placeholder" not in key.lower()}
+        place = lookup.get(ref_of(row))
+        if place:
+            for key in [k for k in new if "address" in k.lower() and new[k] in (None, "")]:
+                del new[key]
+            new["address"] = place["address"] or new.get("address")
+            new["address_basis"] = place["address_basis"] if place["address"] else None
+        latitude = row.get("latitude") if isinstance(row.get("latitude"), (int, float)) else (place or {}).get("latitude")
+        longitude = row.get("longitude") if isinstance(row.get("longitude"), (int, float)) else (place or {}).get("longitude")
+        name = next((v for k, v in row.items() if "name" in k.lower() and isinstance(v, str) and v.strip()), None)
+        located = isinstance(latitude, (int, float)) and isinstance(longitude, (int, float))
+        locations.append({
+            "name": name or (place or {}).get("name"),
+            "address": new.get("address"),
+            "address_basis": new.get("address_basis"),
+            "latitude": latitude, "longitude": longitude,
+            "source_url": "https://www.openstreetmap.org/" + ref_of(row) if ref_of(row) else None,
+        } if located else None)
+        enriched.append(new)
+    return enriched, (locations if any(locations) else None)
 
 
 def _neutral_union_columns(rows, sql):
