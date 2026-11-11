@@ -190,6 +190,13 @@ def validate_demographics(database):
     return counts
 
 
+def snapshot_json(payload):
+    """Keep each extracted observation on one line for readable source diffs."""
+    metadata = json.dumps({key: value for key, value in payload.items() if key != 'rows'}, indent=2)
+    rows = ',\n'.join('    ' + json.dumps(row, separators=(',', ':')) for row in payload['rows'])
+    return metadata[:-1].rstrip() + ',\n  "rows": [\n' + rows + '\n  ]\n}\n'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--database', type=Path, default=DATABASE_PATH)
@@ -198,7 +205,7 @@ def main():
     args = parser.parse_args()
     payload = json.loads(args.snapshot.read_text()) if args.snapshot else fetch_snapshot(args.database)
     import_demographics(payload, args.database, args.database)
-    args.save_snapshot.write_text(json.dumps(payload, indent=2) + '\n')
+    args.save_snapshot.write_text(snapshot_json(payload))
     print(validate_demographics(args.database))
 
 
