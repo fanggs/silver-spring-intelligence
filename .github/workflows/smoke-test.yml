@@ -1,0 +1,9 @@
+name: Actions smoke test
+on:
+  push:
+    branches: [actions-smoke-test]
+jobs:
+  hello:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Actions can start on this repository."
