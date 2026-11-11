@@ -10,3 +10,5 @@ live database. `probe.json` is source discovery output, not a freshness manifest
 The generated community_sources registry records the input checksum and actual
 import time separately from the unknown original retrieval/vintage dates.
 The supplied GeoJSON matched all 40 original stored tract polygons in review.
+
+The discovery JSON line endings are normalized to LF; its content is unchanged.
