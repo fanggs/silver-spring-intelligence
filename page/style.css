@@ -398,5 +398,8 @@ html{scroll-behavior:auto;}
 .popup-hours strong { display: block; margin-bottom: 2px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .popup-links { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; font-weight: 700; }
 .popup-links a { color: var(--forest); text-decoration: underline; }
+/* leaflet.css loads after this file and colours every map link #0078A8; win
+   on specificity so popup links follow the theme (readable in dark mode). */
+.leaflet-container .popup-links a { color: var(--forest); }
 .map-legend-details summary { cursor: pointer; font-weight: 700; }
 .map-legend-details h4 { margin-top: 10px; }
