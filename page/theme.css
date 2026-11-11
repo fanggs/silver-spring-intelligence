@@ -1,0 +1,423 @@
+/* Theme styling stays separate from the existing frontend and map logic. */
+:root {
+    color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --ink: #edf2eb;
+    --forest: #b5d6bd;
+    --forest-light: #a4c9ad;
+    --paper: #141c17;
+    --paper-dark: #2a372e;
+    --white: #1e2922;
+    --muted: #b0bdb3;
+    --border: rgba(222, 237, 225, 0.2);
+    --shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.theme-toggle {
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    background: var(--white);
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.theme-toggle[hidden] {
+    display: none;
+}
+
+.theme-toggle:hover {
+    background: var(--paper-dark);
+}
+
+/* Keep text readable on the existing bright accent surfaces. */
+[data-theme="dark"] .promise-strip,
+[data-theme="dark"] .card-lime,
+[data-theme="dark"] .place-jump button {
+    color: #152019;
+}
+
+[data-theme="dark"] .card-lime h3 em {
+    color: #3e6650;
+}
+
+[data-theme="dark"] .card-soft {
+    background: #2c4031;
+}
+
+[data-theme="dark"] .card-dark {
+    background: #20382b;
+}
+
+[data-theme="dark"] .hero-button,
+[data-theme="dark"] .nav-button:hover {
+    background: #b5d6bd;
+    color: #152019;
+}
+
+[data-theme="dark"] .hero-button:hover {
+    background: #d9ff63;
+}
+
+[data-theme="dark"] .app-question-row button {
+    background: #31543e;
+    color: #ffffff;
+}
+
+[data-theme="dark"] .app-question-row button:hover {
+    background: #436d52;
+}
+
+[data-theme="dark"] input::placeholder {
+    color: var(--muted);
+    opacity: 1;
+}
+
+[data-theme="dark"] .hero-caption {
+    background: rgba(30, 41, 34, 0.94);
+    border-color: var(--border);
+}
+
+[data-theme="dark"] .hero-caption strong {
+    color: var(--ink);
+}
+
+[data-theme="dark"] .hero-caption p,
+[data-theme="dark"] .hero-caption span,
+[data-theme="dark"] .app-panel-hint,
+[data-theme="dark"] .popup-group {
+    color: var(--muted);
+}
+
+[data-theme="dark"] .popup-facts {
+    color: var(--ink);
+}
+
+[data-theme="dark"] .app-banner {
+    background: #2a372e;
+    color: var(--ink);
+}
+
+[data-theme="dark"] .app-banner.is-demo {
+    background: #3d3019;
+    color: #ffda8a;
+    border-color: #a88037;
+}
+
+[data-theme="dark"] .app-banner.is-warning,
+[data-theme="dark"] .answer-state.is-error {
+    background: #42281f;
+    color: #ffb5a1;
+}
+
+[data-theme="dark"] .app-banner.is-live {
+    background: #243c2d;
+    color: #b5d6bd;
+}
+
+/* Reuse the same map tiles without making requests when switching themes.
+   Only the tile pane is filtered; data overlays retain their colors. */
+[data-theme="dark"] #map,
+[data-theme="dark"] .app-map-fallback {
+    background: #202d25;
+}
+
+[data-theme="dark"] .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(0.85) saturate(0.7);
+}
+
+[data-theme="dark"] .leaflet-overlay-pane path[stroke="#1d3326"] {
+    stroke: #b5d6bd;
+}
+
+[data-theme="dark"] .swatch-boundary {
+    border-top-color: #b5d6bd;
+}
+
+[data-theme="dark"] .map-legend,
+[data-theme="dark"] .leaflet-popup-content-wrapper,
+[data-theme="dark"] .leaflet-popup-tip,
+[data-theme="dark"] .leaflet-bar a,
+[data-theme="dark"] .leaflet-control-attribution {
+    background: var(--white);
+    color: var(--ink);
+}
+
+[data-theme="dark"] .map-legend,
+[data-theme="dark"] .leaflet-bar,
+[data-theme="dark"] .leaflet-bar a,
+[data-theme="dark"] .map-legend-note {
+    border-color: var(--border);
+}
+
+[data-theme="dark"] .map-legend h4,
+[data-theme="dark"] .map-legend-label {
+    color: var(--ink);
+}
+
+[data-theme="dark"] .map-legend-count,
+[data-theme="dark"] .map-legend-note,
+[data-theme="dark"] .leaflet-container a.leaflet-popup-close-button {
+    color: var(--muted);
+}
+
+[data-theme="dark"] .leaflet-control-attribution a {
+    color: var(--forest-light);
+}
+
+[data-theme="dark"] .leaflet-bar a:hover {
+    background: var(--paper-dark);
+}
+
+@media (min-width: 701px) and (max-width: 1150px) {
+    .navbar {
+        gap: 22px;
+    }
+
+    .navbar .location {
+        display: none;
+    }
+
+    .navbar .nav-links {
+        gap: 18px;
+    }
+}
+
+@media (max-width: 760px) {
+    .header-actions {
+        gap: 10px;
+    }
+
+    .app-header {
+        flex-wrap: wrap;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+
+    .app-back {
+        font-size: 12px;
+    }
+
+    .theme-toggle {
+        padding: 10px 12px;
+    }
+}
+
+/* Darker green theme with lighter text and accents. */
+:root[data-theme="dark"] {
+    --paper: #080f0b;
+    --paper-dark: #19291e;
+    --white: #101c14;
+
+    --ink: #f0f7f1;
+    --muted: #b6c8bc;
+    --forest: #c0dfc7;
+    --forest-light: #a8d9b5;
+
+    --border: rgba(190, 225, 200, 0.22);
+    --shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+}
+
+/* Give the content cards subtle separation from the background. */
+[data-theme="dark"] .card-dark {
+    background: #0d2015;
+}
+
+[data-theme="dark"] .card-soft {
+    background: #172d1f;
+}
+
+/* Soften the large bright lime sections in dark mode. */
+[data-theme="dark"] .promise-strip {
+    background: #14271a;
+    color: #e7f4df;
+}
+
+[data-theme="dark"] .promise-strip span {
+    opacity: 0.75;
+}
+
+[data-theme="dark"] .card-lime {
+    background: #1b3422;
+    color: #f0f7f1;
+}
+
+[data-theme="dark"] .card-lime h3 em {
+    color: #bce29a;
+}
+
+[data-theme="dark"] .card-lime .card-top span {
+    color: #d9ff63;
+}
+
+/* Keep the theme button clearly visible. */
+[data-theme="dark"] .theme-toggle {
+    background: #1b3022;
+    color: #f0f7f1;
+    border-color: #54765e;
+}
+
+[data-theme="dark"] .theme-toggle:hover {
+    background: #294633;
+}
+
+/* Lighter primary links against the deeper background. */
+[data-theme="dark"] .hero-button,
+[data-theme="dark"] .nav-button:hover {
+    background: #c0dfc7;
+    color: #08120c;
+}
+
+[data-theme="dark"] .hero-button:hover {
+    background: #dcf2df;
+}
+
+/* Keep the Ask button dark green with bright text. */
+[data-theme="dark"] .app-question-row button {
+    background: #254b33;
+    color: #ffffff;
+}
+
+[data-theme="dark"] .app-question-row button:hover {
+    background: #356546;
+}
+
+/* Darken the illustration caption and map background. */
+[data-theme="dark"] .hero-caption {
+    background: rgba(10, 22, 14, 0.96);
+}
+
+[data-theme="dark"] #map,
+[data-theme="dark"] .app-map-fallback {
+    background: #0b160f;
+}
+
+/* Darken map tiles while preserving overlay category colors. */
+[data-theme="dark"] .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(0.7) saturate(0.65);
+}
+
+/* Soft charcoal dark mode with pastel accents. */
+:root[data-theme="dark"] {
+    --paper: #1b1c22;
+    --paper-dark: #343640;
+    --white: #262830;
+
+    --ink: #f1f2f6;
+    --muted: #bdc1ce;
+    --forest: #d4d7eb;
+    --forest-light: #c2c9e5;
+
+    --border: rgba(200, 205, 225, 0.22);
+    --shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+}
+
+/* Slightly different gray surfaces add depth. */
+[data-theme="dark"] .card-dark {
+    background: #23252e;
+}
+
+[data-theme="dark"] .card-soft {
+    background: #30333e;
+}
+
+[data-theme="dark"] .card-lime {
+    background: #353845;
+    color: var(--ink);
+}
+
+[data-theme="dark"] .card-lime h3 em,
+[data-theme="dark"] .card-lime .card-top span {
+    color: #d6cff1;
+}
+
+/* Replace the large lime strip with a soft gray surface. */
+[data-theme="dark"] .promise-strip {
+    background: #2c2e38;
+    color: #e5e6f2;
+}
+
+[data-theme="dark"] .promise-strip span {
+    color: #d6cff1;
+    opacity: 0.85;
+}
+
+/* Soft, bright accents for the main buttons. */
+[data-theme="dark"] .hero-button,
+[data-theme="dark"] .nav-button:hover {
+    background: #d6cff1;
+    color: #24232d;
+}
+
+[data-theme="dark"] .hero-button:hover {
+    background: #e6e0fa;
+}
+
+[data-theme="dark"] .theme-toggle {
+    background: #343743;
+    color: #f1f2f6;
+    border-color: #747b95;
+}
+
+[data-theme="dark"] .theme-toggle:hover {
+    background: #444858;
+}
+
+[data-theme="dark"] .app-question-row button {
+    background: #c9c3e6;
+    color: #24232d;
+}
+
+[data-theme="dark"] .app-question-row button:hover {
+    background: #ded8f4;
+}
+
+/* Match captions and status surfaces to the gray palette. */
+[data-theme="dark"] .hero-caption {
+    background: rgba(38, 40, 48, 0.96);
+    border-color: var(--border);
+}
+
+[data-theme="dark"] .app-banner,
+[data-theme="dark"] .app-banner.is-live {
+    background: #343743;
+    color: #e2e5f4;
+}
+
+/* Dark neutral map background; retain data overlay colors. */
+[data-theme="dark"] #map,
+[data-theme="dark"] .app-map-fallback {
+    background: #202229;
+}
+
+[data-theme="dark"] .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(0.75) saturate(0.15);
+}
+
+[data-theme="dark"] .leaflet-overlay-pane path[stroke="#1d3326"] {
+    stroke: #cbd0e5;
+}
+
+[data-theme="dark"] .swatch-boundary {
+    border-top-color: #cbd0e5;
+}
+
+/* Only the text inside the home page's center location card. */
+:root[data-theme="dark"] #locationCard,
+:root[data-theme="dark"] #locationCard * {
+    color: #000000;
+    opacity: 1;
+}

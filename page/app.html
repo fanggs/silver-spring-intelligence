@@ -3,111 +3,121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Ask evidence-backed questions about Silver Spring, Maryland, and see the public data behind every answer.">
+    <meta name="description" content="Ask evidence-backed questions about Montgomery County communities on a map of Silver Spring.">
     <title>CivicLens — Explore Silver Spring</title>
-    <link rel="stylesheet" href="style.css?v=demographic-coverage-1">
+    <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <script src="theme.js?v=1"></script>
+    <link rel="stylesheet" href="theme.css?v=1">
 </head>
 <body class="app-page">
-    <header class="app-header">
-        <a class="brand" href="index.html" aria-label="CivicLens home">Civic<span>Lens</span><i>✦</i></a>
-        <p>COMMUNITY INTELLIGENCE / SILVER SPRING, MD</p>
+<header class="app-header">
+    <a class="brand" href="index.html" aria-label="CivicLens home">
+        Civic<span>Lens</span><i>✦</i>
+    </a>
+
+    <p>COMMUNITY INTELLIGENCE / SILVER SPRING, MD</p>
+
+    <div class="header-actions">
         <a class="app-back" href="index.html">← Back to home</a>
-    </header>
+
+        <button
+            class="theme-toggle"
+            type="button"
+            aria-label="Switch to dark mode"
+            hidden
+        >Dark mode</button>
+    </div>
+</header>
 
     <main class="app-shell">
         <div class="app-intro">
             <div>
                 <p class="section-label">EXPLORE / SILVER SPRING</p>
                 <h1>Ask about a place. <em>See the evidence.</em></h1>
-                <p>Ask about Silver Spring or a neighborhood by name. Map highlights use whole census tracts to approximate neighborhoods. Published Silver Spring population estimates use the official Census boundary.</p>
+                <p>Explore Silver Spring on the map, with census-tract coverage across all of Montgomery County. Fenton Village is one place you can find—not a separate mode.</p>
             </div>
         </div>
 
-        <div id="modeBanner" class="app-banner" role="status" aria-live="polite" hidden></div>
+        <div id="modeBanner" class="app-banner" role="status" aria-live="polite">Connecting to the data server…</div>
 
         <form id="askForm" class="app-question-form">
             <label for="questionInput">Ask CivicLens a question</label>
             <div class="app-question-row">
-                <input id="questionInput" type="text" name="question" maxlength="500" required
-                       placeholder="Ask Anything!" autocomplete="off">
+                <input id="questionInput" type="text" name="question" list="questionSuggestions" maxlength="500" required
+                       placeholder="How does median income vary across Silver Spring?" autocomplete="off">
                 <button id="askButton" type="submit">Ask <span aria-hidden="true">↗</span></button>
             </div>
-            <p class="app-question-hint">Every answer comes from public data, with the source behind it.</p>
+            <datalist id="questionSuggestions">
+                <option value="Who lives in this neighborhood?"></option>
+                <option value="What languages are spoken at home here?"></option>
+                <option value="Which tracts have the highest share of foreign-born residents?"></option>
+                <option value="How does median income vary across Silver Spring?"></option>
+                <option value="What businesses are in Fenton Village?"></option>
+            </datalist>
+            <p class="app-question-hint">Suggestions are optional. You can ask your own question.</p>
         </form>
 
         <div class="app-columns">
-            <section class="app-answer-panel" aria-labelledby="answerHeading">
-                <div class="app-panel-top">
-                    <h2 id="answerHeading">What the data says</h2>
-                </div>
-                <p id="answerState" class="answer-state" role="status">Ask a question to see a source-backed answer.</p>
-                <div id="answerResult" hidden>
-                    <p id="answerText" class="app-answer-text" aria-live="polite"></p>
-                    <div id="answerStatistic" class="answer-statistic" hidden>
-                        <strong id="statisticValue"></strong>
-                        <span id="statisticLabel"></span>
-                    </div>
-                    <figure id="answerVisual" class="answer-visual" hidden>
-                        <figcaption id="answerVisualTitle"></figcaption>
-                        <ul id="answerVisualItems"></ul>
-                    </figure>
-                    <section id="answerAction" class="answer-action" hidden>
-                        <h3>Next step</h3>
-                        <p id="answerNextStep"></p>
-                    </section>
-                    <p id="answerNotes" class="app-answer-notes" hidden></p>
-                    <details id="answerDetails" class="answer-details">
-                        <summary>See supporting data and sources</summary>
-                        <p id="methodologyNotes" class="app-answer-notes"></p>
-                        <div class="app-table-wrap">
-                            <table id="supportTable" aria-label="Supporting data">
-                                <thead><tr id="supportHeads"></tr></thead>
-                                <tbody id="supportRows"></tbody>
-                            </table>
-                        </div>
-                        <div id="sources" class="app-sources">
-                            <h3>Sources</h3>
-                            <ul id="sourceList"></ul>
-                        </div>
-                        <details id="fullResults" class="full-results" hidden>
-                            <summary>Explore all returned fields</summary>
-                            <div class="raw-table-wrap"><table id="rawResultsTable"></table></div>
-                        </details>
-                        <details id="listingDetails" class="full-results" hidden>
-                            <summary>Inspect the matching map listings</summary>
-                            <p id="listingRecordsStatus"></p>
-                            <ul id="listingRecords" class="listing-records"></ul>
-                        </details>
-                    </details>
-                </div>
-            </section>
-
             <section class="app-map-panel" aria-labelledby="mapHeading">
                 <div class="app-panel-top">
                     <div><p class="section-label">01 / THE PLACE</p><h2 id="mapHeading">Explore the map</h2></div>
-                    <p class="app-panel-hint">Click any area to select it.</p>
+                    <div class="place-jump">
+                        <label for="placeInput">Find a place</label>
+                        <div>
+                            <input id="placeInput" list="placeSuggestions" placeholder="Silver Spring" autocomplete="off">
+                            <button id="placeGo" type="button">Go</button>
+                        </div>
+                        <datalist id="placeSuggestions">
+                            <option value="Silver Spring"></option>
+                            <option value="Fenton Village"></option>
+                            <option value="Bethesda"></option>
+                            <option value="Rockville"></option>
+                        </datalist>
+                    </div>
                 </div>
                 <div class="app-map-wrap">
-                    <div id="map" aria-label="Map of Silver Spring, Maryland"></div>
+                    <div id="map" aria-label="Map of Silver Spring and Montgomery County"></div>
                     <p id="mapFallback" class="app-map-fallback" hidden>Map library could not load. Check your internet connection and refresh.</p>
                 </div>
                 <div class="app-map-footer">
                     <p class="app-legend">
                         <span class="swatch-tract"></span> Census tracts
                         <span class="swatch-highlight"></span> Answer highlights
-                        <span class="swatch-boundary"></span> Silver Spring boundary
+                        <span class="swatch-business"></span> Businesses
                     </p>
                     <p id="layerStatus" role="status" aria-live="polite">Loading map layers…</p>
                 </div>
             </section>
 
+            <section class="app-answer-panel" aria-labelledby="answerHeading">
+                <div class="app-panel-top">
+                    <div><p class="section-label">02 / THE ANSWER</p><h2 id="answerHeading">What the data says</h2></div>
+                </div>
+                <p id="answerState" class="answer-state" role="status" aria-live="polite">Ask a question to see a source-backed answer.</p>
+                <div id="answerResult" hidden>
+                    <p id="answerText" class="app-answer-text"></p>
+                    <div id="sources" class="app-sources">
+                        <h3>Sources</h3>
+                        <ul id="sourceList"></ul>
+                    </div>
+                    <div class="app-table-wrap">
+                        <h3>Supporting values</h3>
+                        <table id="supportTable">
+                            <thead>
+                                <tr><th scope="col" id="supportLabelHead">Result</th><th scope="col" id="supportValueHead">Value</th></tr>
+                            </thead>
+                            <tbody id="supportRows"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
         </div>
     </main>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=demographic-coverage-1"></script>
+    <script src="script.js"></script>
 </body>
 </html>

@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="CivicLens turns scattered public information into a map people can question and verify.">
     <title>CivicLens — Silver Spring Community Intelligence</title>
-    <link rel="stylesheet" href="style.css?v=demographic-coverage-1">
+    <link rel="stylesheet" href="style.css">
+    <script src="theme.js?v=1"></script>
+    <link rel="stylesheet" href="theme.css?v=1">
 </head>
 <body>
     <header class="navbar" id="siteHeader">
@@ -18,6 +20,12 @@
             <a href="#sources">Sources</a>
         </nav>
         <a href="app.html" class="nav-button">Try CivicLens <span>↗</span></a>
+        <button
+            class="theme-toggle"
+            type="button"
+            aria-label="Switch to dark mode"
+            hidden
+        >Dark mode</button>
     </header>
 
     <main>
@@ -32,12 +40,17 @@
                 <a href="app.html" class="hero-button">Try CivicLens <span>↗</span></a>
             </div>
 
-            <div class="hero-visual" id="heroVisual">
-                <img src="hero-map.svg" alt="Map of Silver Spring showing the Census place outline, surrounding tracts, and mapped listings" width="720" height="560">
-                <div class="hero-caption">
-                    <p>SILVER SPRING, MARYLAND</p>
-                    <strong>Explore Silver Spring</strong>
-                    <span>Census boundaries and OpenStreetMap listings</span>
+            <div class="hero-visual" id="heroVisual" aria-hidden="true">
+                <div class="visual-grid"></div>
+                <div class="circle circle-one"></div>
+                <div class="circle circle-two"></div>
+                <span class="point point-one"></span>
+                <span class="point point-two"></span>
+                <span class="point point-three"></span>
+                <div class="location-card" id="locationCard">
+                    <p>FENTON VILLAGE</p>
+                    <strong>Silver Spring</strong>
+                    <span>Maryland</span>
                 </div>
             </div>
         </section>
@@ -163,6 +176,6 @@
         </section>
     </main>
 
-    <script src="script.js?v=demographic-coverage-1"></script>
+    <script src="script.js"></script>
 </body>
 </html>
