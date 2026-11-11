@@ -119,6 +119,30 @@ class CommunityTests(unittest.TestCase):
                 self.assertEqual(con.execute('SELECT COUNT(*) FROM community_sources').fetchone()[0],len(counts))
                 self.assertEqual(con.execute('SELECT female_count FROM place_data').fetchone()[0],41406)
 
+    def test_point_and_building_of_one_place_are_merged(self):
+        from get_data.import_community import merge_point_and_building
+        base = {'category': 'restaurant', 'geoid': '24031702502'}
+        node = dict(base, name='The Big Greek Cafe', osm_id='node/1', latitude=38.9920286, longitude=-77.0262992, cuisine='greek')
+        way = dict(base, name='The Big Greek Cafe', osm_id='way/2', latitude=38.9924096, longitude=-77.0262884, cuisine=None)
+        merged = merge_point_and_building([node, way])
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]['osm_id'], 'node/1')
+        self.assertEqual(merged[0]['cuisine'], 'greek')
+        self.assertEqual(merged[0]['duplicate_source_url'], 'https://www.openstreetmap.org/way/2')
+        # Kept apart, as in the primary table: too far apart, two points, or three buildings.
+        far = dict(way, latitude=38.9915)
+        self.assertEqual(len(merge_point_and_building([node, far])), 2)
+        self.assertEqual(len(merge_point_and_building([node, dict(node, osm_id='node/3')])), 2)
+        campus = [dict(base, name='NOAA', osm_id=f'way/{i}', latitude=38.99, longitude=-77.03) for i in range(3)]
+        self.assertEqual(len(merge_point_and_building(campus)), 3)
+
+    def test_both_business_tables_agree_on_fenton_restaurants(self):
+        fenton = "(SELECT geoid FROM places WHERE LOWER(name) = 'fenton village')"
+        with closing(sqlite3.connect(DB)) as con:
+            primary = con.execute(f"SELECT COUNT(*) FROM businesses WHERE osm_amenity='restaurant' AND geoid IN {fenton}").fetchone()[0]
+            partner = con.execute(f"SELECT COUNT(*) FROM community_businesses WHERE category='restaurant' AND geoid IN {fenton}").fetchone()[0]
+        self.assertEqual(primary, partner)
+
     def test_missing_model_is_not_reported_as_missing_data(self):
         with patch.dict(os.environ, {'ANTHROPIC_API_KEY':''}), patch.object(main,'client',None):
             result=main.ask(main.Question(question='Which venues are available?'))
@@ -128,6 +152,107 @@ class CommunityTests(unittest.TestCase):
     def test_returned_dates_and_capacity_text_can_be_described(self):
         self.assertTrue(main._uses_returned_numbers('Issued 2026-10-28; capacity 120.', [{'issued':'2026-10-28','capacity':'120'}]))
         self.assertFalse(main._uses_returned_numbers('There are 99999 venues.', [{'source_url':'https://example.com/99999'}]))
+
+    def test_year_filtered_by_query_can_name_scope_but_nothing_else(self):
+        rows = [{'incidents': 3635}]
+        sql = """SELECT COUNT(*) AS incidents FROM community_crime WHERE "when" >= '2025-01-01' AND "when" < '2026-01-01' LIMIT 500"""
+        self.assertTrue(main._uses_returned_numbers('In 2025, 3,635 incidents were reported.', rows, sql))
+        self.assertFalse(main._uses_returned_numbers('In 2025, 3,635 incidents were reported.', rows))
+        # A bare number in the SQL (a LIMIT, a code) is not evidence.
+        self.assertFalse(main._uses_returned_numbers('There are 500 incidents.', rows, sql))
+        self.assertFalse(main._uses_returned_numbers('In 2024, 3,635 incidents.', rows, sql))
+
+    def test_code_computed_totals_allow_correct_math_only(self):
+        # Two bookstores returned as two rows of 1: "2" is correct, "3" is not.
+        rows = [{'bookstore_count': 1, 'name': 'A'}, {'bookstore_count': 1, 'name': 'B'}]
+        facts, values = main._exact_totals(rows, 'SELECT ... GROUP BY source_url')
+        self.assertTrue(main._uses_returned_numbers('There are 2 bookstores.', rows, None, values))
+        self.assertFalse(main._uses_returned_numbers('There are 3 bookstores.', rows, None, values))
+        self.assertTrue(any('2' in fact for fact in facts))
+
+    def test_record_count_only_when_result_is_complete(self):
+        rows = [{'name': str(i)} for i in range(7)]
+        _, complete = main._exact_totals(rows, 'SELECT name FROM community_venues')
+        self.assertIn(7.0, complete)
+        # A LIMIT that was reached means there may be more: no count allowed.
+        _, cut = main._exact_totals(rows, 'SELECT name FROM community_venues LIMIT 7')
+        self.assertNotIn(7.0, cut)
+        _, capped = main._exact_totals([{'name': 'x'}] * 200, 'SELECT name FROM businesses')
+        self.assertNotIn(200.0, capped)
+
+    def test_cut_off_results_are_detected_and_explained(self):
+        seven = [{'name': str(i)} for i in range(7)]
+        self.assertIsNone(main._result_limit(seven, 'SELECT name FROM v LIMIT 20'))  # under the limit: complete
+        self.assertEqual(main._result_limit(seven, 'SELECT name FROM v LIMIT 7'), {'shown': 7, 'total': None})
+        self.assertEqual(main._result_limit([{}] * 200, 'SELECT name FROM v')['shown'], 200)  # app's 200-row cap
+        # The database counted every match before the cut-off: say exactly how many.
+        counted = [{'name': 'x', 'total_count': 461}] * 200
+        self.assertEqual(main._result_limit(counted, 'SELECT ... LIMIT 500'), {'shown': 200, 'total': 461})
+        self.assertEqual(main.limited_results_note({'shown': 200, 'total': 461}),
+                         "Showing the first 200 of 461 results. The other 261 aren't listed here.")
+        self.assertIn('There may be more', main.limited_results_note({'shown': 200, 'total': None}))
+        # A total_count proving nothing is missing means it is complete.
+        self.assertIsNone(main._result_limit([{'total_count': 7}] * 7, 'SELECT ... LIMIT 7'))
+        # "Top 5" asked for 5: not a cut-off.
+        top = [{'category': str(i), 'listing_count': 9} for i in range(5)]
+        self.assertIsNone(main._result_limit(top, 'SELECT ... LIMIT 5', question='What are the top 5 categories?'))
+        self.assertIsNone(main._result_limit(top, 'SELECT ... LIMIT 5', question='Which five most common categories?'))
+        self.assertIsNotNone(main._result_limit(top, 'SELECT ... LIMIT 5', question='List every category'))
+
+    def test_medians_and_rates_are_never_summed(self):
+        rows = [{'median_income': 50000, 'transit_pct': 20.0}, {'median_income': 70000, 'transit_pct': 10.0}]
+        _, values = main._exact_totals(rows, 'SELECT median_income, transit_pct FROM tract_data')
+        self.assertNotIn(120000.0, values)
+        self.assertNotIn(30.0, values)
+
+    def test_code_calculates_any_operation_on_returned_numbers(self):
+        rows = [{'transit_2020': 11515, 'commuters_2020': 46794}, {'transit_2024': 6475, 'commuters_2024': 46937}]
+        operands = main._returned_numbers(rows)
+        text, calcs = main._apply_calculations(
+            'Transit fell from [[calc: 11515 / 46794 * 100]]% to [[calc: 6475 / 46937 * 100]]%, '
+            'a drop of [[calc: 11515 - 6475]] riders, or [[calc: (6475 - 11515) / 11515 * 100]]%.', operands)
+        self.assertEqual(text, 'Transit fell from 24.6% to 13.8%, a drop of 5,040 riders, or -43.8%.')
+        self.assertTrue(all('result' in c for c in calcs))
+        computed = {c['result'] for c in calcs}
+        self.assertTrue(main._uses_returned_numbers(text, rows, None, computed))
+
+    def test_calculation_refuses_invented_numbers_and_tricks(self):
+        operands = {11515.0, 46794.0, 0.0}
+        for expression in ['11515 / 40000', '11515 * 2', '__import__("os")', 'max(11515, 46794)', '11515 / 0', '11515 ** 2']:
+            text, calcs = main._apply_calculations(f'Value [[calc: {expression}]].', operands)
+            self.assertIn(main.CALC_ERROR, text, expression)
+            self.assertIn('error', calcs[0])
+            self.assertFalse(main._uses_returned_numbers(text, [{'a': 11515}]))
+
+    def test_unverified_sentence_and_failed_calc_are_dropped(self):
+        rows = [{'value': 3231}]
+        text, _ = main._apply_calculations('About 3,231 Silver Spring residents work in retail. That is [[calc: 3231 / 5000]] of all.', {3231.0})
+        self.assertEqual(main._verified_sentences(text, rows), 'About 3,231 Silver Spring residents work in retail.')
+
+    def test_gap_log_records_reason_and_question(self):
+        import os, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'gaps.jsonl'
+            old = os.environ.get('CIVICLENS_GAP_LOG')
+            os.environ['CIVICLENS_GAP_LOG'] = str(path)
+            try:
+                main._log_gap('How many dentists are there?', 'no_data_for_question')
+            finally:
+                if old is None:
+                    os.environ.pop('CIVICLENS_GAP_LOG')
+                else:
+                    os.environ['CIVICLENS_GAP_LOG'] = old
+            record = json.loads(path.read_text().splitlines()[0])
+            self.assertEqual(record['reason'], 'no_data_for_question')
+            self.assertEqual(record['question'], 'How many dentists are there?')
+
+    def test_fallback_keeps_only_sentences_with_returned_figures(self):
+        rows = [{'value': 3231, 'margin_of_error': 537}, {'value': None}]
+        text = 'Yes: 3,231 Silver Spring residents work in retail trade. There are 11 candidate venues nearby. Capacity is not published for any of them.'
+        kept = main._verified_sentences(text, rows)
+        self.assertEqual(kept, 'Yes: 3,231 Silver Spring residents work in retail trade. Capacity is not published for any of them.')
+        self.assertNotIn('11', kept)
+        self.assertIsNone(main._verified_sentences('There are 11 venues. Yes.', rows))
 
     def test_query_timeout_is_elapsed_time_not_instruction_estimate(self):
         with self.assertRaises(sqlite3.OperationalError):

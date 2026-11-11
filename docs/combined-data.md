@@ -79,7 +79,7 @@ python -m get_data.validate_database /tmp/combined-review.db
 ```
 
 The importer writes a temporary copy and validates before replacing its output.
-It does not edit the original DuckDB. Reimporting replaces only the supplementary
+It does not edit the original DuckDB. Supplemental businesses that OpenStreetMap maps twice, as a point and as its building (same name, category and tract, within 50 m), are merged with the same rule as the primary businesses table; the building link is kept in duplicate_source_url. This removed 2 of 877 rows, including The Big Greek Cafe, so both tables now count 43 Fenton Village restaurants. Reimporting replaces only the supplementary
 source tables; it does not duplicate them or overwrite primary tables.
 
 The existing get_data.build_database command now reimports the bundled partner

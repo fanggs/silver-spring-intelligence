@@ -17,6 +17,7 @@ import os
 import sqlite3
 import time
 from contextvars import ContextVar
+from datetime import datetime, timezone
 from pathlib import Path
 
 import anthropic
@@ -31,6 +32,7 @@ from answers.response_cache import AnswerCache
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATABASE_PATH = str(PROJECT_ROOT / "data" / "silverspring.db")
+GAP_LOG_PATH = PROJECT_ROOT / "logs" / "question-gaps.jsonl"
 MODEL = (os.getenv("ANTHROPIC_MODEL") or "claude-sonnet-5")
 
 
@@ -312,23 +314,35 @@ def _answer_question(q: Question):
     except ModelNotConfigured:
         return _cannot("AI answers are not configured. The data is available, but an administrator must configure the model key before questions can run.")
     except Exception as exc:
+        _log_gap(question, "model_error", type(exc).__name__)
         return _cannot(f"Could not reach the language model ({type(exc).__name__}).")
 
     if "CANNOT_ANSWER" in sql.upper():
+        # The model judged that no installed table can answer this. This is
+        # the clearest sign of a dataset worth adding.
+        _log_gap(question, "no_data_for_question")
         return _cannot()
 
     # 2. Validate and run it read-only against the real database.
     try:
         rows, executed_sql = _run_query(sql)
     except UnsafeQuery as exc:
+        _log_gap(question, "unsafe_query", str(exc), sql)
         return _cannot("I couldn't safely prepare an answer. Please rephrase the question; this does not mean the data is missing.", sql=sql)
     except sqlite3.Error as exc:
+        _log_gap(question, "query_error", str(exc), sql)
         return _cannot("I couldn't retrieve the requested information. Please try a more specific question; this does not establish a data gap.", sql=sql)
 
     if not rows:
+        _log_gap(question, "no_rows", None, executed_sql)
         return _cannot("No data matched that question.", sql=sql)
 
     notes = _answer_notes(executed_sql, rows, question)
+    # Tell the user plainly when the list was cut off. It goes first so the
+    # page always shows it right under the answer.
+    hit_limit = _result_limit(rows, executed_sql, question=question)
+    if hit_limit:
+        notes = [limited_results_note(hit_limit)] + notes
 
     # Pass display precision to the model while keeping the raw query values.
     display_rows = []
@@ -344,6 +358,7 @@ def _answer_question(q: Question):
     listing_counts = _grouped_business_counts(question, executed_sql, rows)
     summary = None
     next_step = None
+    calculations = []
     if listing_counts:
         items = [f"{count:,} {label} listings" for label, count in listing_counts]
         totals = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
@@ -358,7 +373,10 @@ def _answer_question(q: Question):
             f"These rows came back from the database:\n"
             f"{json.dumps(display_rows, indent=2)}\n\n"
             f"Notes displayed separately: {' '.join(notes)}\n\n"
-            "Lead with the direct answer in everyday language. For a lookup or trend, use one "
+            "Lead with the direct answer in everyday language. If the question asks whether data "
+            "exists on something specific, answer that first, whatever order the rows are in. "
+            "Write category codes as plain words (sports_centre is 'sports centre') and large "
+            "numbers with thousands separators. For a lookup or trend, use one "
             "short sentence with the requested totals or rates. Keep names, margins of error, "
             "and extra numbers in the supporting data unless asked for them. "
             "If a measure is missing, say what is missing before any related fact. "
@@ -377,29 +395,89 @@ def _answer_question(q: Question):
             "as mapped listings. Counts alone cannot establish demand, "
             "foot traffic, event interest, or whether a business is open. Do not call counts a proxy for those measures, even if a returned label does. Income and renter share "
             "do not establish housing prices. Put boundary and source caveats only in the separate notes. "
+            "Those notes describe the source datasets, not these rows: never call a "
+            "returned count countywide or unfiltered because a note mentions the source coverage. "
             "Do not restate them "
             "or claim statistical significance unless the query tested it. Use only "
             "numerical values in the display rows, with digits and without further "
-            "rounding or calculation. Do not turn missing rows or a limited list into "
+            "rounding. Never do arithmetic yourself. When the answer needs any calculation "
+            "(a difference, ratio, share, percentage, percentage-point or percent change, "
+            "or a per-person rate), write it as [[calc: expression]] using only numbers that "
+            "appear in the rows or the exact totals, with + - * / and parentheses, "
+            "and code will compute it exactly. Example: '[[calc: 6475 / 46937 * 100]]% of commuters'. "
+            "For a decrease, write the calculation so the result is positive and say 'fell by' "
+            "(e.g. 'fell by [[calc: 24.6 - 13.8]] percentage points'), never 'dropped by -10.8'. "
+            "Only calculate what is meaningful: never add or average medians, rates, "
+            "percentages or margins of error. Do not turn missing rows or a limited list into "
             "zero. Do not mention SQL or databases."
         )
+        # Code does all arithmetic, exactly. The model may only describe a
+        # calculation over returned numbers; a number it works out itself is
+        # rejected by the guard below.
+        total_facts, total_values = _exact_totals(rows, executed_sql, question=question)
+        if hit_limit:
+            known = (f" The full number of matches is {hit_limit['total']:,}; state it."
+                     if hit_limit.get("total") else
+                     " The full number of matches is unknown; do not guess it.")
+            answer_prompt += (
+                f" Only the first {hit_limit['shown']:,} matching rows were returned, so the list "
+                "is not complete." + known + f" The user sees all {hit_limit['shown']:,} returned rows "
+                f"in a table; you are shown only the first {len(display_rows):,}, so never say "
+                f"{len(display_rows):,} are shown. Still answer the question: "
+                "say plainly that these are the first results, then summarise what they show. "
+                "Never present the shown rows as everything."
+            )
+            total_values = set(total_values) | {float(hit_limit["shown"])}
+        elif len(rows) > len(display_rows):
+            answer_prompt += (
+                f" You are shown the first {len(display_rows):,} of {len(rows):,} rows; the user "
+                "can see all of them in the table. Do not describe only the rows you see as if "
+                "they were everything."
+            )
+        if total_facts:
+            answer_prompt += (
+                " Exact totals already computed from every returned row: "
+                + " ".join(total_facts)
+                + " If you state a total, use one of these exactly."
+            )
+        operands = _returned_numbers(rows) | _returned_numbers(display_rows) | set(total_values)
+        last_sections = None
+        calculations = []
         for attempt in range(2):
             try:
                 response = _ask_claude(answer_prompt, max_tokens=450)
-            except Exception:
+            except Exception as exc:
+                _log_gap(question, "model_error", type(exc).__name__, executed_sql)
                 break
+            response, calculations = _apply_calculations(response, operands)
+            computed = {c["result"] for c in calculations if "result" in c}
+            allowed_extra = set(total_values) | computed
             sections = re.split(r"\s*(?:\*\*)?\bnext steps?(?:\*\*)?\s*:\s*(?:\*\*)?\s*", response, maxsplit=1, flags=re.IGNORECASE)
             candidate = sections[0].strip()
-            if candidate and _uses_returned_numbers(candidate, display_rows):
+            last_sections = sections
+            if candidate and _uses_returned_numbers(candidate, display_rows, executed_sql, allowed_extra):
                 summary = candidate
                 if len(sections) == 2:
                     next_step = sections[1].strip() or None
                 break
             if attempt == 0:
-                answer_prompt += " Restate the answer using only figures exactly as returned, or omit the figures."
+                answer_prompt += (" Your last answer stated a figure that is not in the rows. Restate it "
+                                  "using only figures exactly as returned, or [[calc: ...]] for any calculation.")
+        if summary is None and last_sections:
+            # Both attempts stated at least one figure the database did not
+            # return. Keep only the sentences whose every number checks, so
+            # the rule still holds and the user still gets the parts that do.
+            summary = _verified_sentences(last_sections[0], display_rows, executed_sql, allowed_extra)
+            dropped = [s for s in _split_sentences(last_sections[0])
+                       if not _uses_returned_numbers(s, display_rows, executed_sql, allowed_extra)]
+            _log_gap(question, "trimmed_answer" if summary else "no_verified_answer",
+                     {"dropped_sentences": dropped, "calculations": calculations}, executed_sql)
+            if summary and len(last_sections) == 2:
+                next_step = last_sections[1].strip() or None
         if summary is None:
             summary = "Open the supporting data for the results."
-        if next_step and not _uses_returned_numbers(next_step, display_rows):
+        if next_step and not _uses_returned_numbers(next_step, display_rows, executed_sql, allowed_extra if last_sections else total_values):
+            _log_gap(question, "dropped_next_step", next_step, executed_sql)
             next_step = None
 
     _table, _headers = _to_label_value(rows)
@@ -439,6 +517,9 @@ def _answer_question(q: Question):
         "rows": rows,
         "sources": _sources(executed_sql, highlights, rows),
         "sql": executed_sql,
+        # Every calculation shown in the answer, with the exact expression
+        # over returned numbers, so any figure can be re-checked by hand.
+        "calculations": calculations,
     }
 
 
@@ -535,7 +616,7 @@ def _single_listing_count(question, sql, rows):
     if len(counts) != 1:
         return None
     key, count = counts[0]
-    label = key.removesuffix('_count').replace('_', ' ')
+    label = key.removesuffix('_count').removesuffix('_listing').replace('_', ' ')
     label = 'business' if label in ('count', 'business', 'listing') else label
     with sqlite3.connect(f'file:{DATABASE_PATH}?mode=ro', uri=True) as con:
         names = [r[0] for r in con.execute('SELECT DISTINCT name FROM places ORDER BY LENGTH(name) DESC')]
@@ -627,7 +708,9 @@ def _answer_statistic(rows):
     if len(rows) != 1:
         return None
     counts = [(key, value) for key, value in rows[0].items()
-              if (key == 'count' or key.endswith('_count')) and type(value) is int and value >= 0]
+              if (key == 'count' or key.endswith('_count')) and type(value) is int and value >= 0
+              # How many tracts went into a figure is method, not the answer.
+              and not key.startswith('tract')]
     if len(counts) != 1:
         return None
     key, value = counts[0]
@@ -905,14 +988,208 @@ def _answer_notes(sql, rows, question):
     return list(dict.fromkeys(notes + community_notes(DATABASE_PATH, sql)))
 
 
-def _uses_returned_numbers(answer, rows):
-    """Reject new written numbers, including values copied from the question."""
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+                 "eight": 8, "nine": 9, "ten": 10, "twenty": 20, "fifty": 50, "hundred": 100}
+
+
+def _asked_for_count(question):
+    """Numbers the user asked for, as in 'top 5', 'five most', 'first 10'."""
+    found = set()
+    for word in re.findall(r"\b(?:top|first|largest|biggest|smallest|lowest|highest)\s+(\w+)|\b(\w+)\s+(?:most|least|largest|biggest|highest|lowest)\b", question.lower()):
+        token = next(w for w in word if w)
+        if token.isdigit():
+            found.add(int(token))
+        elif token in _NUMBER_WORDS:
+            found.add(_NUMBER_WORDS[token])
+    return found
+
+
+def _result_limit(rows, sql, max_rows=200, question=""):
+    """How the result was cut off, or None if it is the complete answer.
+
+    A limit is a maximum, so getting exactly that many rows back means the
+    database may have stopped early. Returns {"shown": n, "total": t}, where
+    total is the true number of matches when the query counted it with
+    COUNT(*) OVER () (counted before the cut-off), otherwise None.
+    Not a cut-off: fewer rows than the limit, a total_count showing nothing
+    is missing, or a limit equal to what the user asked for ("top 5").
+    """
+    totals = {row.get("total_count") for row in rows}
+    total = totals.pop() if len(totals) == 1 and type(next(iter(totals), None)) is int else None
+    limit = re.search(r"\blimit\s+(\d+)\s*;?\s*$", sql or "", re.I)
+    limit = int(limit.group(1)) if limit else None
+    hit = (limit is not None and len(rows) >= limit) or len(rows) >= max_rows
+    if not hit:
+        return None
+    if total is not None and total <= len(rows):
+        return None
+    if limit is not None and len(rows) == limit and limit in _asked_for_count(question) and total is None:
+        return None  # The user asked for exactly this many.
+    return {"shown": len(rows), "total": total}
+
+
+def limited_results_note(cut):
+    shown, total = cut["shown"], cut.get("total")
+    if total:
+        return (f"Showing the first {shown:,} of {total:,} results. "
+                f"The other {total - shown:,} aren't listed here.")
+    return (f"Only the first {shown:,} results are shown. There may be more "
+            "that aren't listed here, so don't treat this as the full list.")
+
+
+def _exact_totals(rows, sql, max_rows=200, question=""):
+    """Totals computed by code from ALL returned rows, never by the model.
+
+    Returns (facts, values): readable lines for the prompt, and the numbers
+    an answer may state. Only arithmetic that is exact for this result:
+    - how many records came back, but only when nothing was cut off (a
+      LIMIT or the row cap means the true count may be higher);
+    - the sum of each whole-number count column across rows, so two rows
+      of 1 bookstore each are honestly "2 bookstores".
+    Medians, rates, percentages and margins of error are never summed:
+    adding those gives a number that looks precise and means nothing.
+    """
+    facts, values = [], set()
+    cut_off = _result_limit(rows, sql, max_rows, question) is not None
+    if rows and not cut_off and len(rows) > 1:
+        if re.search(r"\bgroup\s+by\b", sql or "", re.I):
+            facts.append(f"The complete result has {len(rows):,} groups (one row per group, "
+                         "e.g. per category). That is a number of groups, not of listings or records.")
+        else:
+            facts.append(f"{len(rows):,} records were returned (the complete result).")
+        values.add(float(len(rows)))
+    if len(rows) > 1 and not cut_off:
+        for column in dict.fromkeys(key for row in rows for key in row):
+            is_count = column == "count" or column.endswith(("_count", "_listings")) or column in {"listings", "listing_count"}
+            if not is_count or _is_percentage(column):
+                continue
+            cells = [row.get(column) for row in rows]
+            if all(type(cell) is int for cell in cells):
+                total = sum(cells)
+                facts.append(f"{_column_label(column)} adds up to {total:,} across all {len(rows):,} rows.")
+                values.add(float(total))
+    return facts, values
+
+
+CALC_ERROR = "[calculation unavailable]"
+_CALC = re.compile(r"\[\[\s*calc\s*:\s*(.*?)\s*\]\]", re.I | re.S)
+
+
+def _returned_numbers(rows):
+    return {float(v) for row in rows for v in row.values() if type(v) in (int, float)}
+
+
+def _apply_calculations(text, operands):
+    """Replace each [[calc: expr]] with its exact result, computed here.
+
+    The model chooses WHAT to calculate; code does the arithmetic. Every
+    operand must be a number the database returned (or an exact total
+    computed from those rows). The only other constant allowed is 100, for
+    percentages. Anything else (an invented operand, a function call,
+    division by zero) becomes CALC_ERROR, which the number guard rejects,
+    so its sentence is dropped rather than shown.
+    Returns (new_text, calculations) where each calculation records the
+    expression, the result, or the reason it was refused.
+    """
+    import ast
+    import operator
+    ops = {ast.Add: operator.add, ast.Sub: operator.sub,
+           ast.Mult: operator.mul, ast.Div: operator.truediv}
+    allowed = set(operands) | {100.0}
+    calculations = []
+
+    def evaluate(node):
+        if isinstance(node, ast.Expression):
+            return evaluate(node.body)
+        if isinstance(node, ast.BinOp) and type(node.op) in ops:
+            return ops[type(node.op)](evaluate(node.left), evaluate(node.right))
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            return -evaluate(node.operand)
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            if float(node.value) not in allowed:
+                raise ValueError(f"{node.value} is not a returned number")
+            return float(node.value)
+        raise ValueError("only + - * / and parentheses are allowed")
+
+    def replace(match):
+        expression = match.group(1).replace(",", "").replace("×", "*").replace("÷", "/").replace("−", "-")
+        try:
+            result = evaluate(ast.parse(expression, mode="eval"))
+        except (ValueError, SyntaxError, ZeroDivisionError, RecursionError) as exc:
+            calculations.append({"expression": match.group(1), "error": str(exc)})
+            return CALC_ERROR
+        shown = _format_calculated(result)
+        calculations.append({"expression": match.group(1), "result": float(shown.replace(",", ""))})
+        return shown
+
+    return _CALC.sub(replace, text), calculations
+
+
+def _format_calculated(value):
+    """Whole numbers with thousands separators; anything else to 1 decimal."""
+    if abs(value - round(value)) < 1e-9:
+        return f"{int(round(value)):,}"
+    return f"{value:,.1f}"
+
+
+def _split_sentences(text):
+    """Split at '. ', '! ', '? ' and line breaks; '3.5' and 'U.S.' stay whole."""
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
+
+
+def _log_gap(question, reason, detail=None, sql=None):
+    """Record a question the app could not fully answer, and why.
+
+    Reasons: no_data_for_question (no table covers it: the strongest hint a
+    dataset is missing), no_rows, query_error, unsafe_query, model_error,
+    trimmed_answer (some sentences dropped), no_verified_answer, and
+    dropped_next_step. Printed as one JSON line prefixed CIVICLENS_GAP, which
+    shows up in the Render logs, and appended to logs/question-gaps.jsonl
+    when running locally. Summarise with: python -m evals.gaps
+    """
+    record = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              "question": question, "reason": reason, "detail": detail, "sql": sql}
+    line = json.dumps(record, default=str)
+    print("CIVICLENS_GAP " + line, flush=True)
+    path = os.environ.get("CIVICLENS_GAP_LOG") or (None if os.environ.get("RENDER") else str(GAP_LOG_PATH))
+    if path:
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+        except OSError:
+            pass  # Logging must never break an answer.
+
+
+def _verified_sentences(text, rows, sql=None, extra=()):
+    """The sentences of `text` that use only returned figures, or None."""
+    sentences = _split_sentences(text)
+    kept = [s for s in sentences if _uses_returned_numbers(s, rows, sql, extra)]
+    # A lone fragment like "Yes." or "Here is what we found:" is not an answer.
+    if not kept or not any(len(s.split()) >= 6 for s in kept):
+        return None
+    return " ".join(kept)
+
+
+def _uses_returned_numbers(answer, rows, sql=None, extra=()):
+    """Reject new written numbers, including values copied from the question.
+
+    One exception: a calendar year that the executed query itself filtered on
+    (e.g. '2025-01-01' in a date range). That year names the scope the
+    database answered for; it is not a statistic, so "In 2025, ..." passes.
+    """
     pattern = r"(?<![\w.])[+−-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
 
     def numbers(value):
         return {float(match.replace(",", "").replace("−", "-")) for match in re.findall(pattern, value)}
 
+    if CALC_ERROR in answer:
+        return False
     allowed = {float(value) for row in rows for value in row.values() if type(value) in (float, int)}
+    allowed.update(extra)
+    if sql:
+        for literal in re.findall(r"'([^']*)'", sql):
+            allowed.update(float(year) for year in re.findall(r"(?<!\d)((?:19|20)\d{2})(?=-\d{2}(?:-\d{2})?(?!\d))", literal))
     for row in rows:
         for key, value in row.items():
             # Dates, source capacity text and other returned descriptive fields

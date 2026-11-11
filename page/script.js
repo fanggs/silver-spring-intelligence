@@ -179,7 +179,9 @@ function initAppPage() {
         const summary = typeof payload?.summary === "string" ? payload.summary.trim() : "";
         const answer = summary || (typeof payload?.answer === "string" ? payload.answer.trim() : "");
         const allNotes = Array.isArray(payload?.notes) ? payload.notes.filter(note => typeof note === "string") : [];
-        const essential = allNotes.filter(note => /approximate|not measure self|do not measure foot/i.test(note));
+        // Notes that must stay visible under the answer. The "only the first N
+        // results" notice comes first from the API and always shows.
+        const essential = allNotes.filter(note => /the first [\d,]+ (?:of [\d,]+ )?results|approximate|not measure self|do not measure foot/i.test(note));
         const notes = summary ? essential.slice(0, 2).join(" ") : "";
         element("methodologyNotes").textContent = allNotes.join(" ");
         const highlights = Array.isArray(payload?.highlight_geoids) ? payload.highlight_geoids : [];
@@ -307,7 +309,7 @@ function initAppPage() {
         list.replaceChildren();
         section.hidden = !Array.isArray(details?.rows) || !details.rows.length;
         if (section.hidden) return;
-        status.textContent = details.truncated ? "Showing the first 200 matching records; the total above includes all matches." : `${details.rows.length} matching mapped records. Operating status is not verified.`;
+        status.textContent = details.truncated ? "Showing the first 200 places only. The total above counts all of them, including ones not listed here." : `${details.rows.length} matching mapped records. Operating status is not verified.`;
         details.rows.forEach(record => {
             const item = document.createElement("li");
             const link = document.createElement("a");
