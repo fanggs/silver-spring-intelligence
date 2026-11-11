@@ -23,10 +23,11 @@ from pydantic import BaseModel
 
 from answers.schema import SCHEMA_DESCRIPTION, COVERAGE_BLURB
 from answers.sql_guard import run, UnsafeQuery
+from answers.community_context import catalog, schema_context, used_sources, notes as community_notes
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATABASE_PATH = str(PROJECT_ROOT / "data" / "silverspring.db")
-MODEL = "claude-sonnet-5"
+MODEL = (os.getenv("ANTHROPIC_MODEL") or "claude-sonnet-5")
 
 
 def _load_env() -> None:
@@ -39,11 +40,12 @@ def _load_env() -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
-        os.environ[k.strip()] = v.strip()
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
 _load_env()
-client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"].strip())
+MODEL = os.getenv("ANTHROPIC_MODEL") or MODEL
+client = None
 
 app = FastAPI(title="CivicLens")
 app.add_middleware(
@@ -58,7 +60,17 @@ class Question(BaseModel):
     question: str
 
 
+class ModelNotConfigured(RuntimeError):
+    """The data is available, but no inference provider has been configured."""
+
+
 def _ask_claude(prompt: str, max_tokens: int = 700) -> str:
+    global client
+    if client is None:
+        key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+        if not key:
+            raise ModelNotConfigured("Configure ANTHROPIC_API_KEY to enable natural-language answers")
+        client = anthropic.Anthropic(api_key=key, timeout=45.0, max_retries=0)
     resp = client.messages.create(
         model=MODEL,
         max_tokens=max_tokens,
@@ -91,6 +103,7 @@ def index():
             "GET  /businesses": "Mapped listings in the Silver Spring tract approximation (?scope=county for all county listings)",
             "POST /ask": "ask a question in plain English -> answer, sources, and the SQL we ran",
             "GET  /docs": "interactive API explorer",
+            "GET  /coverage": "installed primary and supplementary datasets, dates, and limitations",
         },
         "sources": [
             "ACS 5-Year Estimates 2020-2024, U.S. Census Bureau",
@@ -123,6 +136,16 @@ def health():
         }
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+@app.get('/coverage')
+def coverage():
+    """Report the installed datasets and honest source limitations without AI."""
+    with sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True) as conn:
+        conn.row_factory = sqlite3.Row
+        primary = [dict(r) for r in conn.execute('SELECT * FROM data_sources ORDER BY dataset_id')]
+    return {'primary_sources': primary, 'community_sources': catalog(DATABASE_PATH),
+            'geography_note': 'Census place, current tract, and original partner tract geographies are distinct.'}
 
 
 def _scope_clause(scope: str):
@@ -220,7 +243,7 @@ def ask(q: Question):
 
     # 1. Claude writes the query. It never writes the numbers.
     sql_prompt = (
-        f"{SCHEMA_DESCRIPTION}\n\n"
+        f"{SCHEMA_DESCRIPTION}\n\n{schema_context(DATABASE_PATH)}\n\n"
         f"User question: {question}\n\n"
         "Write ONE SQLite SELECT query that answers it. Output only the SQL, "
         "no explanation and no markdown fences. If the question cannot be "
@@ -228,6 +251,8 @@ def ask(q: Question):
     )
     try:
         sql = _ask_claude(sql_prompt, max_tokens=1500)
+    except ModelNotConfigured:
+        return _cannot("AI answers are not configured. The data is available, but an administrator must configure the model key before questions can run.")
     except Exception as exc:
         return _cannot(f"Could not reach the language model ({type(exc).__name__}).")
 
@@ -661,7 +686,7 @@ def _answer_notes(sql, rows, question):
             notes.append("Whole Census tracts approximate the area for this result.")
     if "businesses" in query:
         notes.append("OpenStreetMap listings may be incomplete or out of date.")
-    return notes
+    return list(dict.fromkeys(notes + community_notes(DATABASE_PATH, sql)))
 
 
 def _uses_returned_numbers(answer, rows):
@@ -673,9 +698,11 @@ def _uses_returned_numbers(answer, rows):
 
     allowed = {float(value) for row in rows for value in row.values() if type(value) in (float, int)}
     for row in rows:
-        for key in ("acs_vintage", "name", "place_name", "industry"):
-            if isinstance(row.get(key), str):
-                allowed.update(numbers(row[key]))
+        for key, value in row.items():
+            # Dates, source capacity text and other returned descriptive fields
+            # are evidence too. Exclude URLs/opaque IDs as numerical claims.
+            if isinstance(value, str) and key not in {"source_url", "duplicate_source_url", "geoid", "source_tract_id", "business_id", "osm_id", "incident_id"}:
+                allowed.update(numbers(value))
     return numbers(answer) <= allowed
 
 
@@ -718,6 +745,8 @@ def _sources(sql, geoids, rows):
     if re.search(r"\bplaces\b", text):
         add("Downtown district and neighborhood mappings use whole tracts",
             "https://montgomeryplanning.org/planning/communities/east-county/silver-spring/silver-spring-downtown-plan/")
+    for source in used_sources(DATABASE_PATH, sql):
+        add(source['label']+' (partner snapshot; '+str(source['data_vintage'] or 'source date unconfirmed')+')', source['source_url'])
     if not out:
         census("B01003", "Total Population", CDP_GEO if is_place else geo,
                "official Silver Spring Census place" if is_place else geo_note)

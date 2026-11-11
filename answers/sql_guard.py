@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import time
 
 BANNED = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|REPLACE|TRUNCATE|"
@@ -65,12 +66,10 @@ def run(db_path: str, sql: str, timeout_seconds: float = 8.0, max_rows: int = 20
     conn = connect_readonly(db_path)
 
     # Abort a runaway query instead of hanging the demo.
-    deadline = {"n": 0}
-    limit = int(timeout_seconds * 1_000_000 / 10)
+    deadline = time.monotonic() + timeout_seconds
 
     def guard():
-        deadline["n"] += 1
-        return 1 if deadline["n"] > limit else 0
+        return int(time.monotonic() >= deadline)
 
     conn.set_progress_handler(guard, 10)
     try:

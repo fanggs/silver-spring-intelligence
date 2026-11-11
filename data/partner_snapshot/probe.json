@@ -1,0 +1,460 @@
+{
+  "demographics_layers": [
+    {
+      "id": 0,
+      "name": "Licensed Rental Properties",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 750000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPoint",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 1,
+      "name": "Percent of Residents 64 Years and Older",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 2,
+      "name": "Percent of ResidentsLess than 5 Years Old",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 3,
+      "name": "Percent of Households that are Limited English Proficient",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 4,
+      "name": "Percent of Residents that are Foreign Born",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 5,
+      "name": "Second Most Language Spoken at Home",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 6,
+      "name": "Unemployment Rate",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 7,
+      "name": "Housing burdened owners (more than 30% of income on housing)",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 8,
+      "name": "Housing burdened renters (more than 30% of income on housing)",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 9,
+      "name": "Median Household Income",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 10,
+      "name": "Percent of Residents that have No Health Insurance ",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 11,
+      "name": "Percent of Residents at or Below 100% of the Poverty ",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 12,
+      "name": "Percent of Residents at or Below 200% of  Poverty ",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 13,
+      "name": "Percent of Residents that are Estimated to be Food Insecure 2017",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 14,
+      "name": " Residents Per Square Mile that are Estimated to be Food Insecure 2017",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 15,
+      "name": "Diversity Index (Race/Ethnicity)",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 16,
+      "name": "Senior Vulnerability Index",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    },
+    {
+      "id": 17,
+      "name": "Centers for Disease Control: Social Vulnerability Index",
+      "parentLayerId": -1,
+      "defaultVisibility": false,
+      "subLayerIds": null,
+      "minScale": 1000000,
+      "maxScale": 0,
+      "type": "Feature Layer",
+      "geometryType": "esriGeometryPolygon",
+      "supportsDynamicLegends": true
+    }
+  ],
+  "socrata": {
+    "transit": [
+      [
+        "Bus Delays and Detours-API",
+        "v2kk-cmvg"
+      ],
+      [
+        "Alert Montgomery Statistics",
+        "encb-ivkj"
+      ],
+      [
+        "Transportation Correspondence Log",
+        "m29g-cahw"
+      ],
+      [
+        "Real Property Tax Rates",
+        "es5m-4wf9"
+      ],
+      [
+        "Grants",
+        "47ut-fa4t"
+      ],
+      [
+        "Fiscal Year 2014 Budget",
+        "85n2-q296"
+      ],
+      [
+        "Metro",
+        "st2t-sgkp"
+      ],
+      [
+        "Fiscal Year 2013 Budget",
+        "r89j-py2p"
+      ]
+    ],
+    "bus": [
+      [
+        "Ride On Bus Stops",
+        "sfeg-dbzu"
+      ],
+      [
+        "Automated School Bus Camera Violations",
+        "fp9s-vfdj"
+      ],
+      [
+        "Ride On Bus Stops",
+        "hn2v-6xxv"
+      ],
+      [
+        "Bus Delays and Detours-API",
+        "v2kk-cmvg"
+      ],
+      [
+        "Library Branches near Ride-On Bus Stops",
+        "4v9t-f2yh"
+      ],
+      [
+        "Library Services",
+        "ee7s-jhig"
+      ],
+      [
+        "Libraries Bike Share",
+        "7q62-2z2v"
+      ],
+      [
+        "Library Branch TTY Phone Number",
+        "2wb4-b2c2"
+      ]
+    ],
+    "business license": [
+      [
+        "Electrical Business Licenses",
+        "ydri-y5u9"
+      ],
+      [
+        "Limited Electrical Business License",
+        "rmjr-4zb9"
+      ],
+      [
+        "HHS - Bodyworks Licenses From July 2024 and Onward",
+        "hvxt-ztkq"
+      ],
+      [
+        "Active New Home Builders in Silver Spring",
+        "bs4q-9xuk"
+      ],
+      [
+        "New Home Builders",
+        "c7hs-c9qq"
+      ],
+      [
+        "New Home Builders-API",
+        "rthz-p639"
+      ],
+      [
+        "Alcoholic Beverage License Violations",
+        "4tja-rkhg"
+      ],
+      [
+        "Door-To-Door Vendor's License",
+        "99mh-igdc"
+      ]
+    ],
+    "demographic": [
+      [
+        "Annual Self Insurance Fund Lawsuit Settlement Report",
+        "a88e-vwyk"
+      ],
+      [
+        "Census Block Groups 2010 (geographic data) See \"About\" Menu for Data Dictionary",
+        "a5zi-3qt2"
+      ],
+      [
+        "Annual Self Insurance Settlements by Departments",
+        "y84r-pdcu"
+      ],
+      [
+        "Library Branch TTY Phone Number",
+        "3irm-z326"
+      ],
+      [
+        "Library Services Square Footage by Branch",
+        "thtr-4wj6"
+      ],
+      [
+        "Library Branches near Metro Stations",
+        "nd6q-hnm4"
+      ],
+      [
+        "Census Block Groups 2010 (geographic data)",
+        "y2z8-tsry"
+      ],
+      [
+        "BLKGRP2010",
+        "533j-7i97"
+      ]
+    ],
+    "pedestrian": [
+      [
+        "Police Dispatches for Pedestrian Struck",
+        "gptc-gfn8"
+      ],
+      [
+        "Pedestrian Crash Heat Map",
+        "5ix9-zgv8"
+      ],
+      [
+        "Traffic Violations Related to Pedestrian Safety",
+        "82fa-8cit"
+      ],
+      [
+        "Pedestrian Violations ONLY - Traffic Violations Related to Pedestrian Safety",
+        "esfb-k7mv"
+      ],
+      [
+        "Serious and Fatal Pedestrian and Cyclist Collisions",
+        "yszy-pfje"
+      ],
+      [
+        "Crash Reporting - Incidents Data",
+        "bhju-22kf"
+      ],
+      [
+        "Traffic Violations Related to Pedestrian Safety - Driver Citations ONLY",
+        "jctf-i6uy"
+      ],
+      [
+        "Crash Reporting - Drivers Data",
+        "mmzv-x632"
+      ]
+    ],
+    "crash": [
+      [
+        "Crash Reporting - Incidents Data",
+        "bhju-22kf"
+      ],
+      [
+        "Crash Reporting - Drivers Data",
+        "mmzv-x632"
+      ],
+      [
+        "Fatal Crash Map",
+        "fagt-fiez"
+      ],
+      [
+        "Crash Reporting - Non-Motorists Data",
+        "n7fk-dce5"
+      ],
+      [
+        "2016 Fatal Crash NM",
+        "yae4-5m32"
+      ],
+      [
+        "Bicyclist Crash Reports",
+        "bhc8-i5zt"
+      ],
+      [
+        "Leisure World Crashes (June 2018-June 2019)",
+        "wmgm-c9x4"
+      ],
+      [
+        "Pedestrian Crash Heat Map",
+        "5ix9-zgv8"
+      ]
+    ],
+    "parking": [
+      [
+        "Parking Rates",
+        "dh8t-aq6g"
+      ],
+      [
+        "Parking Garage Space Availability",
+        "qahs-fevu"
+      ],
+      [
+        "Parking Garage Space Availability-API",
+        "gf52-rarq"
+      ],
+      [
+        "Commercial Parking Lots",
+        "weic-kzbi"
+      ],
+      [
+        "Parking Garage and Lot Inventory",
+        "rd7s-ntxu"
+      ],
+      [
+        "Parking Rates-API",
+        "s4bw-d8wd"
+      ],
+      [
+        "DOT Parking Tickets",
+        "uyb2-cfmc"
+      ],
+      [
+        "Parking Facilities in Montgomery County",
+        "4y2z-imp9"
+      ]
+    ]
+  }
+}

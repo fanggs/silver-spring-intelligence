@@ -37,3 +37,13 @@ or `--osm-places-json` to retry a build without repeating that download.
 The validator checks required tables, historical coverage, tract links,
 industry coverage, official place estimates, original listing types and source
 records. It can be run independently against an existing database.
+
+## Supplementary partner data
+
+The bundled `data/partner_snapshot` files can be added with
+`python -m get_data.import_community --warehouse data/partner_snapshot/community.duckdb --geometry data/partner_snapshot/tracts.geojson`.
+Install `get_data/requirements-community.txt` for this import. The primary build
+also imports the bundled pair after rebuilding Census and OSM records; it can
+accept a replacement pair with `--partner-warehouse` and `--partner-geometry`.
+The normal validator checks both primary and imported source integrity.
+See `docs/combined-data.md` for scope and maintenance limitations.

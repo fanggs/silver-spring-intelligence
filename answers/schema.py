@@ -168,9 +168,9 @@ Spring is the subject.
   compare, return BOTH numbers in the same result so the difference is
   visible, e.g. one row for Silver Spring and one for the county.
 
-- Only reply CANNOT_ANSWER when the question is about somewhere genuinely
-  outside our coverage (Bethesda, Rockville, Wheaton, another county or
-  state), or about something the columns simply do not hold. A question
+- Only reply CANNOT_ANSWER when the requested information cannot be established
+  from the installed tables. Check the actual available geography and fields
+  first; do not reject a place by a fixed list of names. A question
   about Silver Spring that you can answer with the columns listed above is
   ALWAYS answerable — including loose wording, misspellings, and everyday
   phrasing like "the cheapest housing" or "where should I open a cafe".
@@ -212,11 +212,11 @@ RULES FOR WRITING SQL
   across a named area, do not group by geoid. The map can use the place name.
 - SELECT statements only. Never INSERT, UPDATE, DELETE, DROP, ALTER, PRAGMA.
 - ALWAYS include source_url in the columns you select, so answers can cite.
-- Never select geometry_geojson; it is huge and not useful in an answer.
+- Avoid selecting large geometry_geojson values unless geometry itself is requested.
 - Compute rates explicitly and guard denominators with NULLIF,
   e.g. 100.0 * foreign_born_count / NULLIF(population_count, 0)
 - Some columns may be NULL. Use IS NOT NULL filters where it matters.
-- Prefer LIMIT 10 or fewer unless the question clearly wants more.
+- Use a sensible LIMIT for an exploratory list; return the requested scope for explicit lists. Do not mistake a limited list for the full count.
 - Include `pct` in percentage aliases. Return raw counts alongside percentages.
 """
 
@@ -224,5 +224,7 @@ RULES FOR WRITING SQL
 COVERAGE_BLURB = (
     "I can answer questions about Silver Spring population, Census sex estimates, "
     "industry of employed residents, household income, language, housing, commuting, "
-    "and mapped businesses and amenities. Some measures are available by tract only."
+    "mapped businesses and amenities, venues, transit stops, reported incidents, "
+    "permits, parcels, and additional community measures when installed. Geography "
+    "and snapshot dates vary by source."
 )

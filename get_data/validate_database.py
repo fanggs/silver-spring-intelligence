@@ -77,6 +77,9 @@ def validate_database(path=DATABASE_PATH):
         sources = {r[0] for r in db.execute("SELECT dataset_id FROM data_sources")}
         require({"acs_2024", "acs_2020", "acs_place_2024", "acs_industry_2024", "tract_geometry_2024", "osm_businesses", "osm_places", "mncppc_cbd"} <= sources,
                 "Incomplete source registry")
+    if 'community_sources' in tables:
+        from .import_community import validate_community
+        validate_community(path)
     print(f"Validation passed: {len(tract_ids)} tracts, {count} listings, official place estimates, industry, neighborhoods and both historical vintages.")
 
 

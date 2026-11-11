@@ -44,7 +44,7 @@ def insert_rows(db, table, rows):
                    ([row[column] for column in columns] for row in rows))
 
 
-def build_snapshot(output, *, business_payload=None, place_payload=None):
+def build_snapshot(output, *, business_payload=None, place_payload=None, partner_warehouse=None, partner_geometry=None):
     now = datetime.now(timezone.utc).isoformat()
     census = fetch_census_tracts()
     earlier = fetch_earlier_tracts()
@@ -100,6 +100,16 @@ def build_snapshot(output, *, business_payload=None, place_payload=None):
             insert_rows(db, "industry_employment", [{**row, "acs_vintage": CURRENT_VINTAGE,
                                                      "retrieved_at": now} for row in industry])
             db.executemany("INSERT INTO data_sources VALUES (?,?,?,?,?,?,?,?)", sources)
+        # Import from the preserved partner snapshot after the primary rebuild.
+        # A failure here still leaves the active output untouched.
+        bundled = Path(__file__).resolve().parents[1] / 'data' / 'partner_snapshot'
+        partner_warehouse = partner_warehouse or (bundled / 'community.duckdb' if (bundled / 'community.duckdb').exists() else None)
+        partner_geometry = partner_geometry or (bundled / 'tracts.geojson' if (bundled / 'tracts.geojson').exists() else None)
+        if bool(partner_warehouse) != bool(partner_geometry):
+            raise ValueError('Both partner database and matching geometry are required')
+        if partner_warehouse:
+            from .import_community import import_community
+            import_community(partner_warehouse, partner_geometry, candidate, candidate)
         validate_database(candidate)
         candidate.replace(output)
     print(f"Saved validated database to {output}")
@@ -110,10 +120,13 @@ def main():
     parser.add_argument("--output", type=Path, default=DATABASE_PATH)
     parser.add_argument("--osm-businesses-json", type=Path, help="Use a saved full Overpass businesses response")
     parser.add_argument("--osm-places-json", type=Path, help="Use a saved full Overpass place-names response")
+    parser.add_argument('--partner-warehouse', type=Path, help='Replacement partner snapshot (bundled snapshot is used by default)')
+    parser.add_argument('--partner-geometry', type=Path, help='Matching original partner tract GeoJSON')
     args = parser.parse_args()
     build_snapshot(args.output,
                    business_payload=json.loads(args.osm_businesses_json.read_text()) if args.osm_businesses_json else None,
-                   place_payload=json.loads(args.osm_places_json.read_text()) if args.osm_places_json else None)
+                   place_payload=json.loads(args.osm_places_json.read_text()) if args.osm_places_json else None,
+                   partner_warehouse=args.partner_warehouse, partner_geometry=args.partner_geometry)
 
 
 if __name__ == "__main__":

@@ -226,6 +226,37 @@ function initAppPage() {
         if (valueHead) valueHead.textContent = heads.value || "Value";
 
         ui.rows.replaceChildren();
+        const raw = document.getElementById("rawResultsTable");
+        const full = document.getElementById("fullResults");
+        if (raw && full) {
+            raw.replaceChildren();
+            const records = Array.isArray(payload.rows) ? payload.rows : [];
+            const fields = [...new Set(records.flatMap(row => Object.keys(row)))];
+            full.hidden = !records.length;
+            full.open = false;
+            const header = document.createElement("tr");
+            fields.forEach(key => {
+                const th = document.createElement("th");
+                th.scope = "col";
+                th.textContent = key.replaceAll("_", " ");
+                header.append(th);
+            });
+            const head = document.createElement("thead");
+            head.append(header);
+            raw.append(head);
+            const body = document.createElement("tbody");
+            records.forEach(record => {
+                const row = document.createElement("tr");
+                fields.forEach(key => {
+                    const td = document.createElement("td");
+                    const value = record[key];
+                    td.textContent = value == null ? "Not available" : typeof value === "object" ? JSON.stringify(value) : String(value);
+                    row.append(td);
+                });
+                body.append(row);
+            });
+            raw.append(body);
+        }
 
         table.forEach((row) => {
             if (!row || typeof row !== "object") return;
