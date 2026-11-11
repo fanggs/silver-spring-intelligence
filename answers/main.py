@@ -472,7 +472,7 @@ def _answer_question(q: Question):
             except Exception as exc:
                 _log_gap(question, "model_error", type(exc).__name__, executed_sql)
                 break
-            response, calculations = _apply_calculations(response, operands)
+            response, calculations = _apply_calculations(_plain_text(response), operands)
             computed = {c["result"] for c in calculations if "result" in c}
             allowed_extra = set(total_values) | computed
             sections = re.split(r"\s*(?:\*\*)?\bnext steps?(?:\*\*)?\s*:\s*(?:\*\*)?\s*", response, maxsplit=1, flags=re.IGNORECASE)
@@ -1240,7 +1240,11 @@ def _category_breakdowns(sql, rows):
     return facts, values
 
 
-_NEUTRAL_COLUMNS = {"value", "count", "n", "total", "amount", "listing_count"}
+def _plain_text(text):
+    """Strip markdown the page would show literally: **Yes** -> Yes, # headings, bullets."""
+    text = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), text)
+    text = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"\1", text)
+    return re.sub(r"(?m)^\s*(?:#{1,6}\s+|[-*•]\s+)", "", text)
 
 
 def _neutral_union_columns(rows, sql):
@@ -1248,9 +1252,11 @@ def _neutral_union_columns(rows, sql):
 
     A UNION ALL takes its column names from its first part, so venue counts
     stacked under a retail-employment row come back named
-    'employed_residents'. When the parts read different tables, a numeric
-    column filled in every row is a mixed measure: name it 'value' so neither
-    the model nor the table on screen reads hotels as employed residents.
+    'employed_residents', and 496 retail workers under bookstores come back
+    named 'listing_count'. When the parts read different tables, a numeric
+    column filled in every row is a mixed measure: name it 'value' so the
+    model and the table on screen don't mislabel it, and so code never adds
+    the rows up (2 bookstores + 496 residents is not a total of anything).
     """
     parts = re.split(r"\bUNION\s+ALL\b", sql or "", flags=re.I)
     tables = {match.group(1).lower() for part in parts
@@ -1258,7 +1264,7 @@ def _neutral_union_columns(rows, sql):
     if len(parts) < 2 or len(tables) < 2 or not rows:
         return rows
     mixed = [key for key in rows[0]
-             if key not in _NEUTRAL_COLUMNS and "url" not in key
+             if key != "value" and "url" not in key
              and all(type(row.get(key)) in (int, float) for row in rows)]
     if len(mixed) != 1 or "value" in rows[0]:
         return rows
