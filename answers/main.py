@@ -337,6 +337,8 @@ def _answer_question(q: Question):
         _log_gap(question, "no_rows", None, executed_sql)
         return _cannot("No data matched that question.", sql=sql)
 
+    rows = _neutral_union_columns(rows, executed_sql)
+
     notes = _answer_notes(executed_sql, rows, question)
     # Tell the user plainly when the list was cut off. It goes first so the
     # page always shows it right under the answer.
@@ -483,11 +485,12 @@ def _answer_question(q: Question):
                     next_step = sections[1].strip() or None
                 break
             if attempt == 0:
-                named = ", ".join(_format_calculated(n) for n in unverified)
+                named = ", ".join(unverified)
                 answer_prompt += (f" Your last answer stated {named or 'a figure'}, which the rows do not "
-                                  "contain (a number repeated from the question counts too). Rewrite it without "
-                                  "that number, using only figures exactly as returned, or [[calc: ...]] for "
-                                  "any calculation. Your last answer was: " + response)
+                                  "support (a number repeated from the question counts too). Rewrite it: use "
+                                  "only figures exactly as returned or [[calc: ...]], give each kind's real count "
+                                  "instead of 'a', and never say counts suggest foot traffic, demand or interest. "
+                                  "Your last answer was: " + response)
         if summary is None and last_sections:
             # Both attempts stated at least one figure the database did not
             # return. Keep only the sentences whose every number checks, so
@@ -501,7 +504,7 @@ def _answer_question(q: Question):
                 next_step = last_sections[1].strip() or None
         if summary is None:
             summary = "Open the supporting data for the results."
-        if next_step and not _uses_returned_numbers(next_step, display_rows, executed_sql, allowed_extra if last_sections else total_values):
+        if next_step and not _uses_returned_numbers(next_step, display_rows, executed_sql, allowed_extra if last_sections else total_values, claims=False):
             _log_gap(question, "dropped_next_step", next_step, executed_sql)
             next_step = None
 
@@ -1237,6 +1240,31 @@ def _category_breakdowns(sql, rows):
     return facts, values
 
 
+_NEUTRAL_COLUMNS = {"value", "count", "n", "total", "amount", "listing_count"}
+
+
+def _neutral_union_columns(rows, sql):
+    """Rename a measure column that holds different measures to 'value'.
+
+    A UNION ALL takes its column names from its first part, so venue counts
+    stacked under a retail-employment row come back named
+    'employed_residents'. When the parts read different tables, a numeric
+    column filled in every row is a mixed measure: name it 'value' so neither
+    the model nor the table on screen reads hotels as employed residents.
+    """
+    parts = re.split(r"\bUNION\s+ALL\b", sql or "", flags=re.I)
+    tables = {match.group(1).lower() for part in parts
+              for match in [re.search(r"\bFROM\s+(\w+)", part, re.I)] if match}
+    if len(parts) < 2 or len(tables) < 2 or not rows:
+        return rows
+    mixed = [key for key in rows[0]
+             if key not in _NEUTRAL_COLUMNS and "url" not in key
+             and all(type(row.get(key)) in (int, float) for row in rows)]
+    if len(mixed) != 1 or "value" in rows[0]:
+        return rows
+    return [{("value" if key == mixed[0] else key): v for key, v in row.items()} for row in rows]
+
+
 def _split_sentences(text):
     """Split at '. ', '! ', '? ' and line breaks; '3.5' and 'U.S.' stay whole."""
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
@@ -1307,7 +1335,7 @@ def _word_numbers(text):
     return found
 
 
-def _uses_returned_numbers(answer, rows, sql=None, extra=(), missing=None):
+def _uses_returned_numbers(answer, rows, sql=None, extra=(), missing=None, claims=True):
     """Reject new written numbers, including values copied from the question.
 
     Numbers count whether written as digits ('6') or as words ('six').
@@ -1322,6 +1350,8 @@ def _uses_returned_numbers(answer, rows, sql=None, extra=(), missing=None):
         return digits | _word_numbers(value)
 
     if CALC_ERROR in answer:
+        if missing is not None:
+            missing.append("a [[calc: ...]] that used a number not in the rows (use only returned numbers)")
         return False
     allowed = {float(value) for row in rows for value in row.values() if type(value) in (float, int)}
     allowed.update(extra)
@@ -1335,9 +1365,76 @@ def _uses_returned_numbers(answer, rows, sql=None, extra=(), missing=None):
             if isinstance(value, str) and key not in {"source_url", "duplicate_source_url", "geoid", "source_tract_id", "business_id", "osm_id", "incident_id"}:
                 allowed.update(numbers(value))
     unsupported = numbers(answer) - allowed
+    problems = [_format_calculated(n) for n in sorted(unsupported)]
+    if claims:
+        # A next step is advice on what to find out ("ask how busy foot
+        # traffic is"), not a claim, so only its numbers are checked.
+        problems += _understated_counts(answer, rows) + _unsupported_inferences(answer)
     if missing is not None:
-        missing.extend(sorted(unsupported))
-    return not unsupported
+        missing.extend(problems)
+    return not problems
+
+
+def _understated_counts(answer, rows):
+    """'a hotel' when a returned row says there are 5 hotels.
+
+    No number appears, so the digit check cannot see it, but "a hotel"
+    tells the reader there is one. Each row with one count above 1 and a
+    text label gives (kind, count); writing that kind with 'a', 'an',
+    'one' or 'a single' is reported.
+    """
+    found = []
+    for row in rows:
+        # total_count (COUNT(*) OVER ()) is the size of the whole list, not of
+        # this row's kind: a list of 7 venues has one community centre in it.
+        counts = [v for k, v in row.items() if type(v) is int and "id" not in k
+                  and k != "geoid" and not k.startswith("total")]
+        # Judge by value, not column name: a query may put a category in a
+        # column it called geoid. Skip only URLs and ID-like digit strings.
+        labels = [v for k, v in row.items() if isinstance(v, str) and "url" not in k
+                  and not v.startswith("http") and not v.strip().isdigit()]
+        if len(counts) != 1 or counts[0] < 2 or not labels:
+            continue
+        for label in labels:
+            kind = re.sub(r"\(.*?\)", "", label.rsplit(":", 1)[-1]).replace("_", " ").strip().lower()
+            if len(kind) < 3 or len(kind.split()) > 3:
+                continue
+            if re.search(r"\b(?:an?|one|a single)\s+" + re.escape(kind) + r"\b", answer, re.I):
+                found.append(f"'a {kind}' (the data has {counts[0]:,})")
+    return found
+
+
+_INFERS = re.compile(r"\b(?:suggest\w*|indicat\w*|impl(?:y|ies|ied|ying)|signs? of|points? to|"
+                     r"reflect\w*|evidence of|proxy|shows? (?:strong|solid|high|healthy))\b", re.I)
+_UNMEASURED = re.compile(r"\b(?:foot traffic|pedestrian traffic|demand|busy|busier|popular\w*|"
+                         r"vibrant|thriving|strong market|healthy market|customer base|appetite|"
+                         r"interest in|attendance|turnout)\b", re.I)
+_ASSERTED = re.compile(r"\b(?:strong|solid|high|heavy|good|healthy|steady|robust|significant|great|"
+                       r"plenty of|lots of|ample|busy)\s+(?:\w+\s+){0,2}?(?:foot traffic|pedestrian traffic|"
+                       r"demand|customer base|interest|attendance|turnout)", re.I)
+_EXISTS = re.compile(r"\b(?:foot traffic|pedestrian traffic|demand|customer base|interest)\s+"
+                     r"(?:\w+\s+){0,2}?(?:exists|is (?:there|present|high|strong|solid|good|healthy|steady))", re.I)
+_HEDGED = re.compile(r"\b(?:unknown|not|no|cannot|can't|without|unclear|isn't|aren't|doesn't|"
+                     r"don't|won't|unmeasured|missing|n't)\b", re.I)
+
+
+def _unsupported_inferences(answer):
+    """Sentences that treat counts as proof of foot traffic, demand or interest.
+
+    Listing counts cannot show any of those, and the prompt says so. A
+    sentence saying they are unknown passes; one saying 78 restaurants
+    'suggest solid foot traffic' is reported.
+    """
+    found = []
+    for sentence in _split_sentences(answer):
+        # Judge each clause on its own: "foot traffic exists, but demand is
+        # unknown" still claims foot traffic in its first half.
+        for clause in re.split(r",?\s+(?:but|while|although|though|whereas|yet)\s+|;|\s[—–-]\s|—", sentence):
+            if (((_INFERS.search(clause) and _UNMEASURED.search(clause)) or _ASSERTED.search(clause)
+                    or _EXISTS.search(clause)) and not _HEDGED.search(clause)):
+                found.append(f"an unsupported claim ('{clause.strip()[:80]}')")
+                break
+    return found
 
 
 def _sources(sql, geoids, rows):
