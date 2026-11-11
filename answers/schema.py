@@ -225,6 +225,17 @@ RULES FOR WRITING SQL
   across a named area, do not group by geoid. The map can use the place name.
 - SELECT statements only. Never INSERT, UPDATE, DELETE, DROP, ALTER, PRAGMA.
 - ALWAYS include source_url in the columns you select, so answers can cite.
+  In an aggregate, take MIN(source_url). Never GROUP BY source_url: it splits
+  one total into one row per record.
+- A text label for a count must describe exactly what was counted. If the
+  filter includes several categories, name them (e.g. 'Events venues and
+  hotels'), never a broader or narrower word than the filter.
+- When returning a list of individual records (no GROUP BY), also select
+  COUNT(*) OVER () AS total_count so the answer can state how many there are.
+  Never add total_count to a GROUP BY result: there it would count groups,
+  not records.
+- Never average median_income across tracts; an average of medians is not a
+  median. Report the range or the individual tracts instead.
 - Avoid selecting large geometry_geojson values unless geometry itself is requested.
 - Compute rates explicitly and guard denominators with NULLIF,
   e.g. 100.0 * foreign_born_count / NULLIF(population_count, 0)

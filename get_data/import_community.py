@@ -49,6 +49,41 @@ def quote(name):
     return '"'+name.replace('"','""')+'"'
 
 
+def merge_point_and_building(records, max_meters=50):
+    """Merge a place OpenStreetMap maps twice: once as a point, once as its building.
+
+    Same rule as the primary businesses table (fetch_businesses.deduplicate_businesses),
+    so both tables count a place once: exactly two records with the same name,
+    category and tract, one a node and the other a way/relation, within 50 m.
+    Anything less certain (three same-named buildings, two separate points,
+    pairs further apart) is kept as is. The kept row is the node, filled in
+    with any field only the building had; the building's link is kept in
+    duplicate_source_url so nothing is lost.
+    """
+    from collections import defaultdict
+    from .fetch_businesses import distance_meters
+    groups = defaultdict(list)
+    for record in records:
+        name = ' '.join(str(record.get('name') or '').casefold().split())
+        if not name or record.get('latitude') is None or record.get('longitude') is None:
+            groups[('', id(record))].append(record)
+            continue
+        groups[(name, record.get('category'), record.get('geoid'))].append(record)
+    merged = []
+    for group in groups.values():
+        if len(group) == 2:
+            node, other = sorted(group, key=lambda r: not str(r.get('osm_id') or '').startswith('node/'))
+            if (str(node.get('osm_id') or '').startswith('node/') and other.get('osm_id')
+                    and not str(other['osm_id']).startswith('node/')
+                    and distance_meters(node, other) <= max_meters):
+                kept = {**{k: v for k, v in other.items() if v is not None}, **{k: v for k, v in node.items() if v is not None}}
+                kept['duplicate_source_url'] = 'https://www.openstreetmap.org/'+other['osm_id']
+                merged.append({k: kept.get(k) for k in {**node, **kept}})
+                continue
+        merged.extend(group)
+    return merged
+
+
 def import_community(warehouse, geometry, base=DATABASE_PATH, output=DATABASE_PATH):
     import duckdb
     warehouse, geometry, base, output = map(lambda x: Path(x).resolve(), (warehouse, geometry, base, output))
@@ -96,6 +131,9 @@ def import_community(warehouse, geometry, base=DATABASE_PATH, output=DATABASE_PA
                     matched = {r['_import_row']: r['geoid'] for r in assign_business_tracts(positioned, tract_shapes)}
                     records = [dict(r, geoid=matched.get(i)) for i,r in enumerate(records)]
                     columns.append(('geoid','TEXT REFERENCES tract_data(geoid)'))
+                if source == 'businesses':
+                    records = merge_point_and_building(records)
+                    columns.append(('duplicate_source_url','TEXT'))
                 columns += [('source_id','TEXT REFERENCES community_sources(source_id)'), ('source_url','TEXT')]
                 geography = '2010 source census tracts' if source=='tract_metrics' else 'Partner Fenton rectangular parcel download' if source=='parcels' else 'Partner source download; point-based 2024 tract links where available'
                 date_column = 'issued' if source=='permits' else 'when' if source in ('crime','ped_struck') else None
