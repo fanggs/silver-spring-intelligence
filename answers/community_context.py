@@ -54,6 +54,12 @@ For an e-commerce panel return the requested retail industry evidence and, if
 helpful, relevant venues/access from the new tables, with clear labels. A UNION
 ALL with consistent labelled columns can combine evidence from different tables.
 Do not substitute venue counts for retail employment.
+When counting places of several kinds (for example venues that are hotels,
+community centres and events venues), return one row per category with
+GROUP BY category, so each kind is counted and named by the data itself.
+Never return a combined count and also a count of one of its parts as separate
+rows: hotels inside a venue total must not appear again as their own row.
+The venue data has no capacity or meeting-room information for any venue.
 Every community point table has latitude, longitude and geoid linked from its
 coordinates to the CURRENT tract_data geometry. Use geoid IN (SELECT geoid
 FROM places WHERE ...) for named districts; use the normal Silver Spring tract
