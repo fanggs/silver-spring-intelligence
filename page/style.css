@@ -388,5 +388,13 @@ html{scroll-behavior:auto;}
 .listing-records { padding-left: 20px; max-height: 360px; overflow-y: auto; }
 .listing-records li { margin: 9px 0; font-size: 13px; overflow-wrap: anywhere; }
 .listing-records a { color: var(--forest); text-decoration: underline; }
+.listing-address { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+/* A place in an answer: looks like a link, shows the place on the map. */
+.place-link { padding: 0; border: 0; background: none; color: var(--forest); font: inherit; text-align: left; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; overflow-wrap: anywhere; }
+.place-link:hover { color: var(--ink); }
+.place-link:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; border-radius: 2px; }
+.popup-address { margin-top: 6px; font-size: 13px; }
+.popup-links { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; font-weight: 700; }
+.popup-links a { color: var(--forest); text-decoration: underline; }
 .map-legend-details summary { cursor: pointer; font-weight: 700; }
 .map-legend-details h4 { margin-top: 10px; }

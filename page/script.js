@@ -58,6 +58,8 @@ function initAppPage() {
     let map = null;
     let tractLayer = null;
     let businessLayer = null;
+    // The pin for a place the user clicked in an answer. One at a time.
+    let focusMarker = null;
     const tractLayersByGeoid = new Map();
     let activeGeoids = new Set();
     let boundaryLayer = null;
@@ -208,6 +210,7 @@ function initAppPage() {
         ui.nextStep.textContent = typeof payload?.next_step === "string" ? payload.next_step.trim() : "";
         ui.action.hidden = !ui.nextStep.textContent;
         ui.details.open = false;
+        if (focusMarker && map) { map.removeLayer(focusMarker); focusMarker = null; }
         renderVisual(payload?.visual);
         renderSupportingData(payload);
         renderListingDetails(payload.listing_details);
@@ -242,6 +245,10 @@ function initAppPage() {
         const columns = Array.isArray(supporting?.columns) && supporting.columns.length
             ? supporting.columns : [payload.table_headers?.label || "Result", payload.table_headers?.value || "Value"];
         const rows = Array.isArray(supporting?.rows) ? supporting.rows : legacy.map((row) => [row.label, row.value]);
+        // Where each row's place is (aligned with rows; null when a row is
+        // not one place). Clicking the place shows it on the map.
+        const locations = Array.isArray(supporting?.locations) ? supporting.locations.map(validPlace) : [];
+        const addressColumn = columns.findIndex(column => /^address$/i.test(String(column)));
         ui.heads.replaceChildren();
         ui.rows.replaceChildren();
         const raw = document.getElementById("rawResultsTable");
@@ -263,12 +270,17 @@ function initAppPage() {
             head.append(header);
             raw.append(head);
             const body = document.createElement("tbody");
-            records.forEach(record => {
+            records.forEach((record, index) => {
                 const row = document.createElement("tr");
+                const place = locations[index];
                 fields.forEach(key => {
                     const td = document.createElement("td");
                     const value = record[key];
-                    td.textContent = value == null ? "Not available" : typeof value === "object" ? JSON.stringify(value) : String(value);
+                    if (key === "address" && place) {
+                        td.append(placeButton(value == null ? "Show on map" : String(value), place));
+                    } else {
+                        td.textContent = value == null ? "Not available" : typeof value === "object" ? JSON.stringify(value) : String(value);
+                    }
                     row.append(td);
                 });
                 body.append(row);
@@ -282,12 +294,20 @@ function initAppPage() {
             th.textContent = String(column);
             ui.heads.appendChild(th);
         });
-        rows.forEach((values) => {
+        rows.forEach((values, rowIndex) => {
             if (!Array.isArray(values)) return;
             const tr = document.createElement("tr");
+            const place = locations[rowIndex];
             columns.forEach((_, index) => {
                 const td = document.createElement("td");
-                td.textContent = String(values[index] ?? "Not available");
+                const text = String(values[index] ?? "Not available");
+                if (place && index === 0) {
+                    td.append(placeButton(text, place));
+                } else if (place && index === addressColumn) {
+                    td.append(placeButton(values[index] == null || text === "Not available" ? "Show on map" : text, place));
+                } else {
+                    td.textContent = text;
+                }
                 tr.appendChild(td);
             });
             ui.rows.appendChild(tr);
@@ -312,11 +332,21 @@ function initAppPage() {
         status.textContent = details.truncated ? "Showing the first 200 places only. The total above counts all of them, including ones not listed here." : `${details.rows.length} matching mapped records. Operating status is not verified.`;
         details.rows.forEach(record => {
             const item = document.createElement("li");
-            const link = document.createElement("a");
-            link.textContent = `${record.name || "Unnamed listing"} · ${String(record.category || "Unclassified").replaceAll("_", " ")}`;
-            const url = validUrl(record.source_url);
-            if (url) { link.href = url; link.target = "_blank"; link.rel = "noopener noreferrer"; }
-            item.append(link);
+            const label = `${record.name || "Unnamed listing"} · ${String(record.category || "Unclassified").replaceAll("_", " ")}`;
+            const place = validPlace(record);
+            if (place) {
+                item.append(placeButton(label, place));
+                const where = document.createElement("span");
+                where.className = "listing-address";
+                where.textContent = place.address || "No street address in OpenStreetMap";
+                item.append(where);
+            } else {
+                const link = document.createElement("a");
+                link.textContent = label;
+                const url = validUrl(record.source_url);
+                if (url) { link.href = url; link.target = "_blank"; link.rel = "noopener noreferrer"; }
+                item.append(link);
+            }
             list.append(item);
         });
     }
@@ -817,8 +847,99 @@ function initAppPage() {
                 ? `in ${names.slice(0, 2).join(" · ")}`
                 : "Silver Spring, Maryland";
 
-            popup.append(title, category, where);
+            popup.append(title, category, where, ...placeFacts({
+                address: point.address,
+                address_basis: point.address_basis,
+                latitude: Number(point.latitude),
+                longitude: Number(point.longitude)
+            }));
             return popup;
+    }
+
+    // A place the answer listed, if it has usable coordinates.
+    function validPlace(value) {
+        if (!value || typeof value !== "object") return null;
+        const latitude = Number(value.latitude);
+        const longitude = Number(value.longitude);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+        return {
+            name: typeof value.name === "string" ? value.name : "",
+            address: typeof value.address === "string" && value.address.trim() ? value.address.trim() : "",
+            address_basis: value.address_basis,
+            latitude,
+            longitude,
+            source_url: value.source_url
+        };
+    }
+
+    // Address line, where it came from, and outbound map links. Google Maps
+    // opens at the exact coordinates (a plain link: no API key, no cost).
+    function placeFacts(place) {
+        const facts = [];
+        const address = document.createElement("div");
+        address.className = "popup-address";
+        address.textContent = place.address || "No street address in OpenStreetMap";
+        facts.push(address);
+        if (place.address && place.address_basis === "building") {
+            const note = document.createElement("div");
+            note.className = "popup-group";
+            note.textContent = "Address of the building it is in";
+            facts.push(note);
+        }
+        if (Number.isFinite(place.latitude) && Number.isFinite(place.longitude)) {
+            const links = document.createElement("div");
+            links.className = "popup-links";
+            const google = document.createElement("a");
+            google.href = `https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}`;
+            google.target = "_blank";
+            google.rel = "noopener noreferrer";
+            google.textContent = "Open in Google Maps";
+            links.append(google);
+            const source = validUrl(place.source_url);
+            if (source) {
+                const osm = document.createElement("a");
+                osm.href = source;
+                osm.target = "_blank";
+                osm.rel = "noopener noreferrer";
+                osm.textContent = "Map record";
+                links.append(osm);
+            }
+            facts.push(links);
+        }
+        return facts;
+    }
+
+    function placeButton(text, place) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "place-link";
+        button.textContent = text;
+        button.title = "Show on the map";
+        button.setAttribute("aria-label", `${text}: show on the map`);
+        button.addEventListener("click", () => focusPlace(place));
+        return button;
+    }
+
+    // Pin the place, centre the map on it and open its details.
+    function focusPlace(place) {
+        if (!map || !place) return;
+        const latlng = [place.latitude, place.longitude];
+        if (focusMarker) map.removeLayer(focusMarker);
+        const popup = document.createElement("div");
+        const title = document.createElement("strong");
+        title.textContent = place.name || "Selected place";
+        popup.append(title, ...placeFacts(place));
+        focusMarker = L.circleMarker(latlng, {
+            pane: "businessPane",
+            radius: 10,
+            color: "#ffffff",
+            weight: 3,
+            fillColor: "#152019",
+            fillOpacity: 1
+        }).addTo(map).bindPopup(popup);
+        document.getElementById("map")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        map.setView(latlng, Math.max(map.getZoom(), 17));
+        focusMarker.openPopup();
     }
 
     function initMap() {

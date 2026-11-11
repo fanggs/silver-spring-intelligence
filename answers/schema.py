@@ -227,6 +227,14 @@ RULES FOR WRITING SQL
 - ALWAYS include source_url in the columns you select, so answers can cite.
   In an aggregate, take MIN(source_url). Never GROUP BY source_url: it splits
   one total into one row per record.
+- ADDRESSES AND MAP LOCATIONS ARE ADDED BY CODE. When the question asks which
+  or what places, or to list or show them, return one row per place (no
+  GROUP BY, no GROUP_CONCAT of names) with its name and its own source_url.
+  The app then attaches each place's street address and map location itself,
+  from every table above. So never join tables to get an address, never
+  select an address from a table that has none, and never select NULL or
+  placeholder columns. Filter in whichever table has the field asked about
+  (cuisine is in community_businesses; venues are in community_venues).
 - A text label for a count must describe exactly what was counted. If the
   filter includes several categories, name them (e.g. 'Events venues and
   hotels'), never a broader or narrower word than the filter.

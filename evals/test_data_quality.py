@@ -47,7 +47,7 @@ def answer_from_rows(case, rows):
     return f"The Census estimates {row['population_count']:,} residents in Silver Spring."
 
 
-def provider_stub(prompt, max_tokens):
+def provider_stub(prompt, max_tokens, **_):
     if "These rows came back from the database:" in prompt:
         question, content = prompt.split("\n\nThese rows came back from the database:\n", 1)
         case = next(case for case, text in QUESTIONS.items() if question == f"Question: {text}")
@@ -130,7 +130,7 @@ class DataQualityTests(unittest.TestCase):
     def test_rates_are_rounded_for_the_summary_and_scope_notes_are_separate(self, model):
         calls = []
 
-        def respond(prompt, max_tokens):
+        def respond(prompt, max_tokens, **_):
             calls.append(prompt)
             if len(calls) == 1:
                 return "SELECT acs_vintage, AVG(public_transit_commuter_count * 100.0 / total_commuter_count) AS transit_pct FROM tract_history GROUP BY acs_vintage"
