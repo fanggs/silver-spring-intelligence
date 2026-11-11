@@ -110,6 +110,16 @@ def build_snapshot(output, *, business_payload=None, place_payload=None, partner
         if partner_warehouse:
             from .import_community import import_community
             import_community(partner_warehouse, partner_geometry, candidate, candidate)
+            # The snapshot's county tables are older than the county's own
+            # site; bring them current so a rebuild never rolls them back.
+            # If the county site is unreachable, the snapshot stays.
+            from .refresh_county import refresh as refresh_county
+            try:
+                county = refresh_county(candidate)
+                if not county.get("replaced"):
+                    print("County refresh did not pass its checks; keeping the partner snapshot's county tables.")
+            except Exception as error:
+                print(f"County refresh unavailable ({type(error).__name__}); keeping the partner snapshot's county tables.")
         demographic_snapshot = Path(__file__).resolve().parents[1] / 'data/demographics_2024.json'
         if demographic_snapshot.exists():
             from .import_demographics import import_demographics

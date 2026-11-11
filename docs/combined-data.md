@@ -91,6 +91,31 @@ sources. Obtain a rebuilt partner snapshot to refresh these records; no nightly
 scheduler or metadata polling has been configured. DuckDB is not needed by the
 API runtime, only the import step.
 
+## Automatic weekly refresh
+
+`.github/workflows/refresh-data.yml` runs every Monday (and on demand from the
+Actions tab) and costs nothing: public-repo Actions minutes, public APIs, no
+keys, no model calls. It runs `python -m get_data.refresh`, which:
+
+| Data | Source | How fresh | What the refresh does |
+| --- | --- | --- | --- |
+| Crime, building permits, pedestrian-struck dispatches | Montgomery County open data (dataMontgomery) | Updated daily by the county | Replaces the three `community_` tables for the same Silver Spring rectangle, only if every overlapping record still matches field for field (98%+), 98%+ of old records remain, and the newest date did not go backwards. All or nothing. |
+| Address, opening hours, website, phone | OpenStreetMap | Edited continuously by volunteers | Rebuilds `place_locations`. Building-derived addresses found earlier are kept when Overpass is down. |
+| Census (ACS 5-year) | Census Bureau | Once a year, usually December | Checks only. A new release changes headline numbers, so a person rebuilds with `get_data.build_database` and reviews the four test questions. |
+
+The workflow then validates the database and runs every test. Only if all of
+that passes is the new database committed to `main`, which Render deploys.
+If tests fail, nothing is published and GitHub emails the owner. If a step
+needs a person (the county changed a field, a new Census release is out), that
+part keeps its old data and one "Data refresh needs attention" issue is opened
+or updated.
+
+Not refreshed automatically: the business list itself (new or closed places),
+bus stops (the county last changed them in May 2025), stations, venues,
+parcels and county demographic metrics. No free source publishes bookings or
+live availability; the app shows mapped hours, website and phone instead, and
+says when they are missing.
+
 ## Addresses and map locations
 
 `place_locations` holds one row per OpenStreetMap place referenced by

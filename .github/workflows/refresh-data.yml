@@ -1,0 +1,89 @@
+# Weekly data refresh. Free: public repo minutes, public APIs, no model calls.
+#
+# Refreshes county records (crime, permits, pedestrian incidents) and place
+# details (address, hours, website, phone), checks for a new Census release,
+# then validates the database and runs every test. Only if all of that
+# passes is the new database committed to main, which Render deploys.
+#
+# - Tests or validation fail: nothing is published; the run fails and GitHub
+#   emails the repository owner.
+# - A step needs a person (the county changed a field, a new Census release
+#   is out): that part keeps its old data, everything else still publishes,
+#   and one "Data refresh needs attention" issue is opened or updated.
+#
+# Run it by hand: Actions tab -> Weekly data refresh -> Run workflow.
+name: Weekly data refresh
+
+on:
+  schedule:
+    - cron: "0 11 * * 1"   # Mondays 11:00 UTC (6 or 7 am Eastern)
+  workflow_dispatch:
+
+permissions:
+  contents: write   # commit the refreshed database
+  issues: write     # open the "needs attention" issue
+
+concurrency:
+  group: data-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -r answers/requirements.txt -r get_data/requirements-community.txt requests
+
+      - name: Refresh data
+        id: refresh
+        # Exit 1 means "needs a person", not damaged data: keep going so the
+        # parts that did refresh can still be checked and published.
+        continue-on-error: true
+        run: python -m get_data.refresh --summary refresh-summary.md
+
+      - name: Validate and test the refreshed database
+        run: |
+          python -m get_data.validate_database
+          python -m unittest discover -s evals -p 'test_*.py'
+
+      - name: Publish
+        run: |
+          cat refresh-summary.md >> "$GITHUB_STEP_SUMMARY"
+          if git diff --quiet -- data/silverspring.db; then
+            echo "No data changed; nothing to publish." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/silverspring.db
+          git commit -F - <<EOF
+          Weekly data refresh $(date -u +%Y-%m-%d)
+
+          $(cat refresh-summary.md)
+          EOF
+          # Someone may have pushed while this ran; their commits go first.
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Flag anything that needs a person
+        if: steps.refresh.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Data refresh needs attention"
+          number=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          body="$(cat refresh-summary.md)
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

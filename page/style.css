@@ -394,6 +394,8 @@ html{scroll-behavior:auto;}
 .place-link:hover { color: var(--ink); }
 .place-link:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; border-radius: 2px; }
 .popup-address { margin-top: 6px; font-size: 13px; }
+.popup-hours { margin-top: 8px; font-size: 12px; line-height: 1.45; }
+.popup-hours strong { display: block; margin-bottom: 2px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .popup-links { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; font-weight: 700; }
 .popup-links a { color: var(--forest); text-decoration: underline; }
 .map-legend-details summary { cursor: pointer; font-weight: 700; }

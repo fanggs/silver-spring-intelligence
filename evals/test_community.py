@@ -28,10 +28,17 @@ class CommunityTests(unittest.TestCase):
             self.assertEqual(con.execute('SELECT female_count FROM place_data').fetchone()[0],41406)
             self.assertEqual(con.execute("SELECT employed_residents FROM industry_employment WHERE geography_type='place' AND industry='Retail trade'").fetchone()[0],3231)
             self.assertTrue(con.execute('SELECT COUNT(*) FROM tract_history').fetchone()[0])
+            # A source either has a real retrieval date AND vintage (refreshed
+            # from the publisher by get_data.refresh_county), or neither (the
+            # partner snapshot, whose dates are unknown). Never half of each.
+            from get_data.refresh_county import DATASETS as REFRESHED
             for row in catalog(DB):
-                self.assertIsNone(row['retrieved_at'])
-                self.assertIsNone(row['data_vintage'])
                 self.assertTrue(row['source_sha256'])
+                if row['retrieved_at']:
+                    self.assertIn(row['source_id'], REFRESHED)
+                    self.assertTrue(row['data_vintage'])
+                else:
+                    self.assertIsNone(row['data_vintage'])
 
     def test_points_reassigned_by_geometry_and_old_tract_ids_kept_separate(self):
         with closing(sqlite3.connect(DB)) as con:
@@ -114,7 +121,11 @@ class CommunityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             target=Path(folder)/'combined.db'
             counts=import_community(ROOT/'data/partner_snapshot/community.duckdb',ROOT/'data/partner_snapshot/tracts.geojson',base=DB,output=target)
-            self.assertEqual(counts,validate_community(DB))
+            # The import reproduces the snapshot exactly. (The live database
+            # can differ: refresh_county replaces the county tables with
+            # newer records, so compare against the imported file itself.)
+            self.assertEqual(counts,validate_community(target))
+            self.assertEqual(set(counts),set(validate_community(DB)))
             with closing(sqlite3.connect(target)) as con:
                 self.assertEqual(con.execute('SELECT COUNT(*) FROM community_sources').fetchone()[0],len(counts))
                 self.assertEqual(con.execute('SELECT female_count FROM place_data').fetchone()[0],41406)
