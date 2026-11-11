@@ -222,3 +222,7 @@ __marimo__/
 .env
 data/*.db
 __pycache__/
+
+# Personal working rules, not team docs
+CLAUDE.md
+AGENTS.md
