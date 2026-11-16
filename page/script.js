@@ -1013,9 +1013,9 @@ function initAppPage() {
         }).addTo(map);
     }
 
-    async function requestJson(path, options = {}) {
+    async function requestJson(path, options = {}, timeoutMs = 20000) {
         const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), 20000);
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
 
         try {
             const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -1032,6 +1032,62 @@ function initAppPage() {
             }
 
             return await response.json();
+        } finally {
+            window.clearTimeout(timer);
+        }
+    }
+
+    // An answer takes about 5-15 seconds (two model calls and a number
+    // check), longer if the server was asleep, so questions get more time
+    // than map layers.
+    const ASK_TIMEOUT_MS = 90000;
+    const ASK_STAGES = {
+        query: "Finding the right data…",
+        database: "Looking it up…",
+        answer: "Writing the answer and checking every number…",
+        repair: "Fixing the lookup and trying again…",
+        rewrite: "Rewriting so every number matches the data…"
+    };
+
+    // Ask through /ask/stream, which reports each step as it happens, one
+    // JSON object per line. Falls back to /ask if the server doesn't have it.
+    async function askQuestion(question, onStage) {
+        const options = {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question }) // Exact request: no extra fields.
+        };
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), ASK_TIMEOUT_MS);
+        try {
+            const response = await fetch(`${API_BASE_URL}/ask/stream`, {
+                ...options,
+                headers: { ...options.headers, Accept: "application/x-ndjson" },
+                signal: controller.signal
+            });
+            if (response.status === 404 || response.status === 405) {
+                return await requestJson("/ask", options, ASK_TIMEOUT_MS);
+            }
+            if (!response.ok || !response.body) {
+                throw new Error(`/ask/stream returned HTTP ${response.status}`);
+            }
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            for (;;) {
+                const { value, done } = await reader.read();
+                buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+                const lines = buffer.split("\n");
+                buffer = done ? "" : lines.pop();
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    const event = JSON.parse(line);
+                    if (event.result) return event.result;
+                    if (event.error) throw new Error(event.error);
+                    if (event.stage) onStage(event.stage);
+                }
+                if (done) throw new Error("/ask/stream ended without an answer");
+            }
         } finally {
             window.clearTimeout(timer);
         }
@@ -1151,13 +1207,8 @@ function initAppPage() {
             if (demoMode) {
                 renderAnswer(demoAnswer);
             } else {
-                const payload = await requestJson("/ask", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Accept: "application/json"
-                    },
-                    body: JSON.stringify({ question }) // Exact request: no extra fields.
+                const payload = await askQuestion(question, stage => {
+                    if (ASK_STAGES[stage]) showMessage(ASK_STAGES[stage]);
                 });
 
                 renderAnswer(payload);

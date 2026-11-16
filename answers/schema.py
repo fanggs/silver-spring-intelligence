@@ -197,7 +197,8 @@ HOW TO ANSWER BUSINESS QUESTIONS
 - For a business decision, use the requested business type as the filter.
   Coffee shops are osm_amenity='cafe'. Bookstores are osm_shop='books' (which
   also includes specialty book shops). Return the matching count and names,
-  e.g. COUNT(*) and GROUP_CONCAT(name, ', '). Include another category or
+  e.g. COUNT(*) and GROUP_CONCAT(name, '; ') (names can contain commas, so
+  separate them with a semicolon). Include another category or
   measure only if the question asks for it. A limited list of top categories
   never proves a type is absent.
 - Counts reflect mapped OpenStreetMap listings, not a complete operating-business

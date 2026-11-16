@@ -9,8 +9,9 @@ Census table it came from.
 
 Built at Bay Hacks 2026 for the UX University Challenge.
 
-- **Live API:** https://silver-spring-intelligence.onrender.com
-  (`/health`, `/tracts`, `/businesses`, `/boundary`, `POST /ask`, `/docs`)
+- **Live site:** https://civiclens-pzpt.onrender.com
+- **Live API:** https://civiclens-api-ack0.onrender.com
+  (`/health`, `/tracts`, `/businesses`, `/boundary`, `POST /ask`, `POST /ask/stream` (same answer, with live progress), `/docs`)
 - **Map:** `page/` — open `page/index.html`, or serve it with
   `cd page && python3 -m http.server 5500`
 

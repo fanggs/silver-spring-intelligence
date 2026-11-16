@@ -76,19 +76,22 @@ data. If the storage layer changes, the validation moves with it.
 question
    |
    v
-[1] Claude writes SQL        model: claude-sonnet-5, max_tokens 1500
-   |                         input: schema prompt + question
+[1] Claude writes SQL        model: claude-haiku-5-5, effort medium, max_tokens 8000
+   |                         input: schema prompt (cached) + question
    |                         output: ONE SQLite SELECT, or "CANNOT_ANSWER"
    v
 [2] sql_guard.validate()     model is now OUT of the loop
    |
    v
 [3] read-only execution      file:...?mode=ro, 8s timeout, max 200 rows
-   |
+   |                         a query SQLite rejects gets ONE repair: the model
+   |                         sees the error and rewrites it
    v
-[4] Claude phrases it        max_tokens 800
+[4] Claude phrases it        effort medium, max_tokens 4000
    |                         input: question + up to 25 returned rows as JSON
+   |                         + exact totals computed by code
    |                         instruction: use ONLY these numbers
+   |                         a draft with an unreturned number is rewritten once
    v
 answer + sources + the SQL itself
 ```
