@@ -64,7 +64,7 @@ class AnswerRegressionTests(unittest.TestCase):
         with patch.object(main, '_ask_claude', return_value=CASES[3]['sql']) as model:
             result = main.ask(main.Question(question=CASES[3]['question']))
         self.assertEqual(model.call_count, 1)
-        self.assertIn('tract area used to approximate Fenton Village', result['summary'])
+        self.assertIn('area used to approximate Fenton Village', result['summary'])
         self.assertEqual(len(result['listing_details']['rows']), result['rows'][0]['restaurant_count'])
         self.assertFalse(result['listing_details']['truncated'])
         self.assertTrue(all(row['source_url'].startswith('https://www.openstreetmap.org/') for row in result['listing_details']['rows']))

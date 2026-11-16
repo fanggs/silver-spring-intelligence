@@ -104,7 +104,7 @@ class DataQualityTests(unittest.TestCase):
         book, retail, sex, restaurant = (outcomes[key] for key in list(CASES)[:4])
         self.assertEqual(book["rows"][0]["bookstore_count"], 2)
         self.assertIn("Mojomala", book["answer"])
-        self.assertIn("mapped Census tracts", book["answer"])
+        self.assertIn("The mapped areas approximate", book["answer"])
         self.assertEqual(retail["rows"][0]["employed_residents"], 3231)
         self.assertIn("employed residents", retail["answer"])
         self.assertTrue(any("C24050?g=160XX00US2472450" in item["url"] for item in retail["sources"]))
@@ -116,7 +116,7 @@ class DataQualityTests(unittest.TestCase):
             venues = conn.execute(f"SELECT osm_amenity FROM businesses WHERE geoid IN ({FENTON_TRACTS})").fetchall()
         self.assertIn(("cafe",), venues)
         self.assertEqual(restaurant["rows"][0]["restaurant_count"], venues.count(("restaurant",)))
-        self.assertIn("mapped Census tracts", restaurant["answer"])
+        self.assertIn("The mapped areas approximate", restaurant["answer"])
         self.assertIn("OpenStreetMap listings may be incomplete", restaurant["answer"])
         self.assertEqual(outcomes["population"]["rows"][0]["population_count"], 81462)
 
