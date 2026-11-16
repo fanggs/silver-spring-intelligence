@@ -12,18 +12,22 @@ from __future__ import annotations
 
 import json
 import math
+import queue
 import re
 import os
 import sqlite3
+import threading
 import time
 from contextlib import closing
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from datetime import datetime, timezone
 from pathlib import Path
 
 import anthropic
 from fastapi import FastAPI, Request, Response
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from answers.schema import SCHEMA_DESCRIPTION, COVERAGE_BLURB
@@ -35,7 +39,10 @@ from answers.response_cache import AnswerCache
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATABASE_PATH = str(PROJECT_ROOT / "data" / "silverspring.db")
 GAP_LOG_PATH = PROJECT_ROOT / "logs" / "question-gaps.jsonl"
-MODEL = (os.getenv("ANTHROPIC_MODEL") or "claude-sonnet-5")
+# Haiku 5.5: measured on 18 test questions (Nov 16, 2026) it stated no wrong
+# figure in 36 answers and cost about $0.0013 a question, a tenth of Sonnet 5.
+# It is slower (about 8 s), so the page shows progress while it works.
+MODEL = (os.getenv("ANTHROPIC_MODEL") or "claude-haiku-5-5")
 
 
 def _load_env() -> None:
@@ -56,6 +63,14 @@ MODEL = os.getenv("ANTHROPIC_MODEL") or MODEL
 client = None
 answer_cache = AnswerCache()
 stage_timings = ContextVar('stage_timings', default=None)
+# Set by /ask/stream: called with each step's name so the page can show it.
+progress_listener = ContextVar('progress_listener', default=None)
+
+
+def _progress(stage):
+    listener = progress_listener.get()
+    if listener is not None:
+        listener(stage)
 
 app = FastAPI(title="CivicLens")
 app.add_middleware(
@@ -100,6 +115,8 @@ class ModelTruncated(RuntimeError):
 # missed venues; the default "high" spent up to 1,570 tokens on one query,
 # which overran the old 1,500-token cap and returned no text at all. The cap
 # is a ceiling, not a charge: only tokens actually used are billed.
+# Rechecked on Haiku 5.5: "low", or thinking turned off, answered faster but
+# counted crimes for the wrong area and lost the main number from answers.
 SQL_EFFORT, SQL_MAX_TOKENS = "medium", 8000
 ANSWER_EFFORT, ANSWER_MAX_TOKENS = "medium", 4000
 
@@ -203,6 +220,7 @@ def health():
         conn.close()
         return {
             "ok": True,
+            "model": MODEL,
             "silver_spring": {"tracts": ss_tracts, "businesses": ss_biz},
             "county": {"tracts": tracts, "businesses": biz},
         }
@@ -320,12 +338,8 @@ def ask(q: Question, response: Response = None, request: Request = None):
     # request fresh model output using Cache-Control: no-cache.
     key = None
     if response is not None:
-        try:
-            key = answer_cache.key(DATABASE_PATH, MODEL, q.question)
-        except OSError:
-            pass
-        bypass = request is not None and 'no-cache' in request.headers.get('cache-control', '').lower()
-        cached = None if bypass or key is None else answer_cache.get(key)
+        key = _cache_key(q)
+        cached = None if _bypass_cache(request) or key is None else answer_cache.get(key)
         response.headers['X-CivicLens-Cache'] = 'HIT' if cached is not None else 'MISS'
         if cached is not None:
             return cached
@@ -333,6 +347,58 @@ def ask(q: Question, response: Response = None, request: Request = None):
     if key is not None:
         answer_cache.put(key, result)
     return result
+
+
+def _cache_key(q):
+    try:
+        return answer_cache.key(DATABASE_PATH, MODEL, q.question)
+    except OSError:
+        return None
+
+
+def _bypass_cache(request):
+    return request is not None and 'no-cache' in request.headers.get('cache-control', '').lower()
+
+
+@app.post("/ask/stream")
+def ask_stream(q: Question, request: Request = None):
+    """The same answer as /ask, sent as newline-delimited JSON.
+
+    While the answer is worked out, one line per step ({"stage": "query"},
+    then "database", "answer", and "rewrite" if a draft failed the number
+    check), so the page can say what is happening. The last line is
+    {"result": <exactly what /ask returns>} or {"error": "..."}.
+    """
+    key = _cache_key(q)
+    cached = None if _bypass_cache(request) or key is None else answer_cache.get(key)
+    events = queue.Queue()
+
+    def work():
+        progress_listener.set(lambda stage: events.put({"stage": stage}))
+        try:
+            result = _answer_question(q)
+            if key is not None:
+                answer_cache.put(key, result)
+            events.put({"result": result})
+        except Exception as exc:  # the page shows its own message
+            print(f"CIVICLENS_STREAM_ERROR {type(exc).__name__}: {exc}", flush=True)
+            events.put({"error": "The server could not answer this question right now."})
+        finally:
+            events.put(None)
+
+    if cached is not None:
+        events.put({"result": cached})
+        events.put(None)
+    else:
+        threading.Thread(target=copy_context().run, args=(work,), daemon=True).start()
+
+    def lines():
+        while (event := events.get()) is not None:
+            yield json.dumps(jsonable_encoder(event)) + "\n"
+
+    return StreamingResponse(lines(), media_type="application/x-ndjson", headers={
+        "Cache-Control": "no-store", "X-Accel-Buffering": "no",
+        "X-CivicLens-Cache": "HIT" if cached is not None else "MISS"})
 
 
 def _answer_question(q: Question):
@@ -354,6 +420,7 @@ def _answer_question(q: Question):
         "no explanation and no markdown fences. If the question cannot be "
         "answered from these tables, output exactly: CANNOT_ANSWER"
     )
+    _progress("query")
     try:
         sql = _ask_claude(sql_prompt, max_tokens=SQL_MAX_TOKENS, effort=SQL_EFFORT,
                           cache_prefix=schema_prefix, stage="query_model")
@@ -376,14 +443,33 @@ def _answer_question(q: Question):
         return _cannot()
 
     # 2. Validate and run it read-only against the real database.
-    try:
-        rows, executed_sql = _run_query(sql)
-    except UnsafeQuery as exc:
-        _log_gap(question, "unsafe_query", str(exc), sql)
-        return _cannot("I couldn't safely prepare an answer. Please rephrase the question; this does not mean the data is missing.", sql=sql)
-    except sqlite3.Error as exc:
-        _log_gap(question, "query_error", str(exc), sql)
-        return _cannot("I couldn't retrieve the requested information. Please try a more specific question; this does not establish a data gap.", sql=sql)
+    _progress("database")
+    for attempt in range(2):
+        try:
+            rows, executed_sql = _run_query(sql)
+            break
+        except UnsafeQuery as exc:
+            _log_gap(question, "unsafe_query", str(exc), sql)
+            return _cannot("I couldn't safely prepare an answer. Please rephrase the question; this does not mean the data is missing.", sql=sql)
+        except sqlite3.Error as exc:
+            # A query that SQLite rejects (e.g. ORDER BY a name a UNION does
+            # not have) gets one repair: the model sees the error and fixes
+            # it. A second failure is reported as before.
+            _log_gap(question, "query_error" if attempt else "query_error_repairing", str(exc), sql)
+            if attempt:
+                return _cannot("I couldn't retrieve the requested information. Please try a more specific question; this does not establish a data gap.", sql=sql)
+            _progress("repair")
+            try:
+                sql = _ask_claude(sql_prompt + f"\n\nThis query failed in SQLite with the error "
+                                  f"\"{exc}\":\n{sql}\nWrite a corrected query. Output only the SQL.",
+                                  max_tokens=SQL_MAX_TOKENS, effort=SQL_EFFORT,
+                                  cache_prefix=schema_prefix, stage="query_model")
+            except Exception as repair_exc:
+                _log_gap(question, "model_error", type(repair_exc).__name__, sql)
+                return _cannot("I couldn't retrieve the requested information. Please try a more specific question; this does not establish a data gap.", sql=sql)
+            if "CANNOT_ANSWER" in sql.upper():
+                _log_gap(question, "no_data_for_question")
+                return _cannot()
 
     if not rows:
         _log_gap(question, "no_rows", None, executed_sql)
@@ -437,10 +523,15 @@ def _answer_question(q: Question):
                "places if useful, and say their addresses and map locations are in the table below. "
                if locations else "") +
             "Never state latitude or longitude coordinates. "
-            "Opening hours are OpenStreetMap text as mapped: hours with no day names mean every "
-            "day; a missing value means the hours are not mapped (unknown), never that the place "
-            "is closed. Say how many places have no hours mapped instead of leaving them out, and "
-            "say hours should be checked before visiting. "
+            + ("Opening hours are OpenStreetMap text as mapped: hours with no day names mean every "
+               "day; a missing value means the hours are not mapped (unknown), never that the place "
+               "is closed. Say how many places have no hours mapped, using the exact count given "
+               "below, instead of leaving them out; never count them yourself. Say hours should "
+               "be checked before visiting. "
+               if any("opening_hours" in key.lower() for key in rows[0]) else
+               "Do not mention opening hours. ") +
+            "Never write an age range or any other number that is not a value in the rows "
+            "(say 'employed residents', not 'residents aged 16+'). "
             "Lead with the direct answer in everyday language. If the question asks whether data "
             "exists on something specific, answer that first, whatever order the rows are in. "
             "Write category codes as plain words (sports_centre is 'sports centre') and large "
@@ -448,7 +539,10 @@ def _answer_question(q: Question):
             "('6', not 'six'). Never count rows yourself, for example how many of the listed "
             "venues are hotels: state such a count only if a row or the exact totals give it, "
             "otherwise name the items without a number. Never repeat a number from the "
-            "question: say 'your event', not 'a 50-person event'. Write the next step without "
+            "question: say 'your event', not 'a 50-person event'. For a yes/no question "
+            "with a number in it, answer with the returned figure alone: for 'more than 60 "
+            "restaurants?' write 'No: N mapped restaurant listings' with N from the rows, never 'fewer than 60' or "
+            "'not more than 60'. Write the next step without "
             "numbers ('call a few of the hotels', not 'call 2-3'). If the question asks for "
             "something the rows cannot show, such as capacity, say plainly that it is missing "
             "and still name the matching places. For a lookup or trend, use one "
@@ -529,10 +623,20 @@ def _answer_question(q: Question):
                 "call a hotel a conference venue."
             )
             total_values = set(total_values) | breakdown_values
-        operands = _returned_numbers(rows) | _returned_numbers(display_rows) | set(total_values)
+        if set(_sql_geoids(executed_sql)) == set(SILVER_SPRING_GEOIDS):
+            # Both models misread these as "tracts that may not be Silver
+            # Spring", or picked the middle tract as the area's median.
+            answer_prompt += (" These rows are the Census tracts this app uses for Silver Spring: "
+                              "call them Silver Spring's tracts, never tracts that may lie elsewhere.")
+            if any("income" in key.lower() for key in rows[0]):
+                answer_prompt += (" The data has no single median income for Silver Spring as a whole: "
+                                  "give the range across its tracts, and never present one tract's value, "
+                                  "the middle tract or any average as Silver Spring's median.")
+        operands =_returned_numbers(rows) | _returned_numbers(display_rows) | set(total_values)
         last_sections = None
         calculations = []
         for attempt in range(2):
+            _progress("answer" if attempt == 0 else "rewrite")
             try:
                 response = _ask_claude(answer_prompt, max_tokens=ANSWER_MAX_TOKENS, effort=ANSWER_EFFORT)
             except Exception as exc:
@@ -1204,6 +1308,12 @@ def _exact_totals(rows, sql, max_rows=200, question=""):
         else:
             facts.append(f"{len(rows):,} records were returned (the complete result).")
         values.add(float(len(rows)))
+    hours = [key for key in dict.fromkeys(k for row in rows for k in row) if "opening_hours" in key.lower()]
+    if rows and not cut_off and hours and not re.search(r"\bgroup\s+by\b", sql or "", re.I):
+        unmapped = sum(1 for row in rows if not any(str(row.get(key) or "").strip() for key in hours))
+        facts.append(f"{unmapped:,} of the {len(rows):,} listed places have no opening hours mapped "
+                     "(unknown, not closed).")
+        values |= {float(unmapped), float(len(rows))}
     if len(rows) > 1 and not cut_off:
         for column in dict.fromkeys(key for row in rows for key in row):
             is_count = column == "count" or column.endswith(("_count", "_listings")) or column in {"listings", "listing_count"}
