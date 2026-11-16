@@ -615,7 +615,7 @@ function initAppPage() {
                 const title = document.createElement("strong");
                 title.textContent = placeNames.length
                     ? placeNames.slice(0, 3).join(" · ")
-                    : tractLabel;
+                    : String(props.area_label || tractLabel);
                 popup.append(title);
 
                 if (placeNames.length > 3) {
@@ -641,7 +641,7 @@ function initAppPage() {
 
                 const code = document.createElement("div");
                 code.className = "popup-group";
-                code.textContent = placeNames.length ? tractLabel : `GEOID ${id}`;
+                code.textContent = placeNames.length || props.area_label ? tractLabel : `GEOID ${id}`;
                 popup.append(code);
 
                 return popup;

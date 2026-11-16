@@ -167,7 +167,7 @@ class CommunityTests(unittest.TestCase):
     def test_count_sentence_names_the_filtered_category(self):
         sql = "SELECT COUNT(*) AS listing_count, MIN(source_url) AS source_url FROM businesses WHERE osm_amenity = 'restaurant' AND geoid IN (SELECT geoid FROM places WHERE LOWER(name) = LOWER('Fenton Village'))"
         sentence = main._single_listing_count('How many restaurants are in Fenton Village?', sql, [{'listing_count': 43, 'source_url': 'x'}])
-        self.assertEqual(sentence, 'There are 43 mapped restaurant listings in the tract area used to approximate Fenton Village.')
+        self.assertEqual(sentence, 'There are 43 mapped restaurant listings in the area used to approximate Fenton Village.')
 
     def test_mixed_venue_count_gets_a_database_breakdown(self):
         area = "geoid IN (SELECT geoid FROM places WHERE LOWER(name) LIKE '%silver spring%')"

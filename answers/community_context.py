@@ -98,9 +98,9 @@ def notes(path, sql):
         if not source['retrieved_at'] or not source['data_vintage']:
             out.append('The partner snapshot has no confirmed source retrieval date or data vintage; record dates and import time are different.')
         if source['source_id'] in ('venues','bus_stops','stations','permits','ped_struck','crime','businesses'):
-            out.append('Point records are assigned to current Census tracts by location. Named district totals use whole-tract approximations, not a precise district boundary.')
+            out.append('Records are placed in Census areas by their location. Named district totals use whole Census areas, so they are approximate, not a precise district boundary.')
         if source['source_id']=='tract_metrics':
-            out.append('These additional demographic measures use original 2010 tracts; they cannot be directly compared with current tract estimates.')
+            out.append('These additional demographic measures use the older 2010 Census areas; they cannot be directly compared with current estimates.')
         if source.get('undated_rows'):
             out.append('Some records have no date and are excluded from dated comparisons.')
     return list(dict.fromkeys(out))

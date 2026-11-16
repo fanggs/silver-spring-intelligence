@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections import Counter
 import queue
 import re
 import os
@@ -291,6 +292,7 @@ def tracts(scope: str = "silver-spring"):
                 "geoid": r["geoid"],
                 "tract_name": r["tract_name"],
                 "place_names": names.get(r["geoid"], []),
+                "area_label": _area_labels().get(r["geoid"]),
                 "population_count": r["population_count"],
                 "median_income": r["median_income"],
                 "foreign_born_count": r["foreign_born_count"],
@@ -498,6 +500,7 @@ def _answer_question(q: Question):
                 elif "income" in column:
                     display_row[column] = round(value)
         display_rows.append(display_row)
+    display_rows = _with_area_names(display_rows)
     listing_counts = _grouped_business_counts(question, executed_sql, rows)
     summary = None
     next_step = None
@@ -522,7 +525,9 @@ def _answer_question(q: Question):
                "clicking it shows it on the map. Do not repeat addresses in your answer: name a few "
                "places if useful, and say their addresses and map locations are in the table below. "
                if locations else "") +
-            "Never state latitude or longitude coordinates. "
+            "Never state latitude or longitude coordinates. Name an area only by its 'area' "
+            "value, written exactly (e.g. 'Northwest Park / Oakview'); never write 'Census tract', 'tract' or a "
+            "tract number. "
             + ("Opening hours are OpenStreetMap text as mapped: hours with no day names mean every "
                "day; a missing value means the hours are not mapped (unknown), never that the place "
                "is closed. Say how many places have no hours mapped, using the exact count given "
@@ -626,12 +631,12 @@ def _answer_question(q: Question):
         if set(_sql_geoids(executed_sql)) == set(SILVER_SPRING_GEOIDS):
             # Both models misread these as "tracts that may not be Silver
             # Spring", or picked the middle tract as the area's median.
-            answer_prompt += (" These rows are the Census tracts this app uses for Silver Spring: "
-                              "call them Silver Spring's tracts, never tracts that may lie elsewhere.")
+            answer_prompt += (" These rows are the areas this app uses for Silver Spring: "
+                              "call them areas of Silver Spring, never places that may lie elsewhere.")
             if any("income" in key.lower() for key in rows[0]):
                 answer_prompt += (" The data has no single median income for Silver Spring as a whole: "
-                                  "give the range across its tracts, and never present one tract's value, "
-                                  "the middle tract or any average as Silver Spring's median.")
+                                  "give the range across its areas, and never present one area's value, "
+                                  "the middle area or any average as Silver Spring's median.")
         operands =_returned_numbers(rows) | _returned_numbers(display_rows) | set(total_values)
         last_sections = None
         calculations = []
@@ -698,6 +703,8 @@ def _answer_question(q: Question):
     if geography['kind'] == 'census_place':
         highlights, scope = [], 'boundary'
 
+    summary, next_step = _no_tract_words(summary), _no_tract_words(next_step)
+    notes = [_no_tract_words(note) for note in notes]
     return {
         "answer": " ".join(filter(None, (summary, next_step, *notes))),
         "summary": summary,
@@ -705,7 +712,7 @@ def _answer_question(q: Question):
         "notes": notes,
         "visual": _answer_visual(executed_sql, rows, listing_counts),
         "statistic": _answer_statistic(rows),
-        "supporting_data": _supporting_data(rows, locations),
+        "supporting_data": _supporting_data(_with_area_names(rows), locations),
         "listing_details": _listing_details(executed_sql),
         "highlight_geoids": highlights,
         "highlight_scope": scope,
@@ -741,6 +748,150 @@ def _place_names_by_geoid():
     except sqlite3.Error:
         pass
     return _PLACE_NAME_CACHE
+
+
+_AREA_LABELS = {}
+_TRACT_NAME = re.compile(r"^\s*census tract\s+(\d+(?:\.\d+)?)\b", re.I)
+
+
+def _area_labels():
+    """geoid -> what to call a Census tract on screen. Never "Census Tract 7016.02".
+
+    1. The neighbourhoods inside it, districts first ("Northwest Park / Oakview").
+    2. Else the closest named place, if within 1 km ("near Oakview").
+    3. Else the town most of its mapped business addresses give, with the most
+       common street so two areas of one town differ ("Gaithersburg, around
+       Quince Orchard Road").
+    4. Else "near" the town of the closest area that has one.
+    """
+    if _AREA_LABELS:
+        return _AREA_LABELS
+    try:
+        with closing(sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)) as conn:
+            tracts = conn.execute("SELECT geoid, centroid_latitude, centroid_longitude FROM tract_data").fetchall()
+            points = conn.execute("SELECT name, latitude, longitude FROM places "
+                                  "WHERE latitude IS NOT NULL AND longitude IS NOT NULL").fetchall()
+            addresses = conn.execute(
+                "SELECT b.geoid, pl.address FROM businesses b JOIN place_locations pl "
+                "ON pl.source_url = b.source_url WHERE b.geoid IS NOT NULL AND pl.address LIKE '%, MD%'").fetchall()
+    except sqlite3.Error:
+        return _AREA_LABELS
+
+    def km(lat1, lon1, lat2, lon2):
+        return math.hypot((lat1 - lat2) * 111.0, (lon1 - lon2) * 111.0 * math.cos(math.radians(lat1)))
+
+    towns, streets = {}, {}
+    for geoid, address in addresses:
+        parts = [part.strip() for part in address.split(",")]
+        town = next((parts[i - 1] for i, part in enumerate(parts) if i and re.match(r"MD\b", part)), None)
+        street = re.sub(r"^\d+[A-Za-z-]*\s+", "", parts[0]).replace("_", " ")
+        if town:
+            towns.setdefault(geoid, Counter())[town] += 1
+        if street and street != parts[0]:
+            streets.setdefault(geoid, Counter())[street] += 1
+
+    names = _place_names_by_geoid()
+    labels = {}
+    for geoid, lat, lon in tracts:
+        if names.get(geoid):
+            # Slashes keep one area one unit in a list of several areas.
+            labels[geoid] = " / ".join(list(dict.fromkeys(names[geoid]))[:3])
+            continue
+        if lat is not None and points:
+            name, plat, plon = min(points, key=lambda p: km(lat, lon, p[1], p[2]))
+            if km(lat, lon, plat, plon) <= 1.0:
+                labels[geoid] = f"near {name}"
+                continue
+        if towns.get(geoid):
+            town = towns[geoid].most_common(1)[0][0]
+            street = streets.get(geoid) and streets[geoid].most_common(1)[0][0]
+            labels[geoid] = f"{town}, around {street}" if street else f"{town} area"
+    for geoid, lat, lon in tracts:
+        if geoid not in labels and lat is not None:
+            known = [(g, la, lo) for g, la, lo in tracts if towns.get(g) and la is not None]
+            if known:
+                g = min(known, key=lambda t: km(lat, lon, t[1], t[2]))[0]
+                labels[geoid] = f"near {towns[g].most_common(1)[0][0]}"
+    # Long roads cross several areas ("Silver Spring, around Georgia
+    # Avenue"). Tell repeats apart by their second street, then by direction
+    # from the middle of the areas that share the name.
+    centres = {g: (la, lo) for g, la, lo in tracts if la is not None}
+    for attempt in ("street", "direction"):
+        groups = {}
+        for geoid, label in labels.items():
+            groups.setdefault(label, []).append(geoid)
+        for label, geoids in groups.items():
+            if len(geoids) < 2:
+                continue
+            for geoid in geoids:
+                if attempt == "street" and ", around " in label and len(streets.get(geoid, ())) > 1:
+                    labels[geoid] = f"{label} and {streets[geoid].most_common(2)[1][0]}"
+                elif attempt == "direction" and geoid in centres:
+                    mid_lat = sum(centres[g][0] for g in geoids if g in centres) / len(geoids)
+                    mid_lon = sum(centres[g][1] for g in geoids if g in centres) / len(geoids)
+                    north = (centres[geoid][0] - mid_lat) * 111.0
+                    east = (centres[geoid][1] - mid_lon) * 111.0 * math.cos(math.radians(mid_lat))
+                    heading = ["east", "north-east", "north", "north-west", "west",
+                               "south-west", "south", "south-east"][round(math.degrees(math.atan2(north, east)) / 45) % 8]
+                    labels[geoid] = f"{label} ({heading})"
+    _AREA_LABELS.update(labels)
+    return _AREA_LABELS
+
+
+def _tract_geoids_by_name():
+    """"7016.02" -> geoid, for rows that carry a tract name but no geoid."""
+    return {str(int(geoid[5:9])) + ("." + geoid[9:] if geoid[9:] != "00" else ""): geoid
+            for geoid in _area_labels()}
+
+
+def _with_area_names(rows):
+    """Rows as the model sees them: each tract named by its area, no tract numbers.
+
+    "Census Tract 7016.02; Montgomery County; Maryland" becomes "Northwest Park
+    / Oakview", so the answer can only name the area. A row with a geoid
+    but no tract name gets an "area" value instead.
+    """
+    labels, by_number = _area_labels(), _tract_geoids_by_name()
+    out = []
+    for row in rows:
+        new, named = {}, False
+        for key, value in row.items():
+            if key in ("tract_code", "source_tract_id"):
+                continue
+            match = _TRACT_NAME.match(value) if isinstance(value, str) else None
+            if match:
+                number = match.group(1)
+                # A 2010 tract ("7016") was later split ("7016.01", "7016.02"):
+                # name it by the first current area it became.
+                parts = [g for n, g in sorted(by_number.items()) if n.startswith(number + ".")]
+                geoid = (str(row.get("geoid") or "") or by_number.get(number)
+                         or next((g for g in parts if not labels.get(g, "near").startswith("near")), "")
+                         or next(iter(parts), ""))
+                if labels.get(geoid):
+                    new["area" if key == "tract_name" else key] = labels[geoid]
+                    named = True
+                    continue
+            new[key] = value
+        geoid = str(row.get("geoid") or "")
+        if not named and labels.get(geoid):
+            new = {"area": labels[geoid], **new}
+        out.append(new)
+    return out
+
+
+_TRACT_WORDS = [(re.compile(r"\bcensus tracts\b", re.I), "Census areas"),
+                (re.compile(r"\bcensus tract\b", re.I), "Census area"),
+                (re.compile(r"\btracts\b"), "areas"), (re.compile(r"\btract\b"), "area"),
+                (re.compile(r"\bTracts\b"), "Areas"), (re.compile(r"\bTract\b"), "Area")]
+
+
+def _no_tract_words(text):
+    """Last line of defence: an answer never says "tract" to a reader."""
+    if not text:
+        return text
+    for pattern, plain in _TRACT_WORDS:
+        text = pattern.sub(plain, text)
+    return text
 
 
 def _grouped_business_counts(question, sql, rows):
@@ -808,7 +959,7 @@ def _demographic_count(question, sql, rows):
         with sqlite3.connect(f'file:{DATABASE_PATH}?mode=ro', uri=True) as con:
             names = [r[0] for r in con.execute('SELECT DISTINCT name FROM places ORDER BY LENGTH(name) DESC')]
         place = next((name for name in names if name.lower() in question.lower()), None)
-        area = 'the tract area used to approximate ' + place if place else 'the selected Census tracts'
+        area = 'the area used to approximate ' + place if place else 'the selected areas'
     label = ', '.join(reversed(str(row['label']).split(' > ')))
     return f"{row['acs_vintage']} estimates {value:,} residents classified as {label} in {area}."
 
@@ -824,7 +975,7 @@ def _answer_geography(sql, rows, highlights):
         return {'kind': 'census_place', 'id': '2472450', 'label': 'Silver Spring Census place',
                 'approximate': False, 'boundary_url': '/boundary'}
     return {'kind': 'tract_approximation', 'geoids': highlights,
-            'label': 'Whole Census tracts', 'approximate': True}
+            'label': 'Whole Census areas', 'approximate': True}
 
 
 def _single_listing_count(question, sql, rows):
@@ -848,7 +999,7 @@ def _single_listing_count(question, sql, rows):
     with sqlite3.connect(f'file:{DATABASE_PATH}?mode=ro', uri=True) as con:
         names = [r[0] for r in con.execute('SELECT DISTINCT name FROM places ORDER BY LENGTH(name) DESC')]
     name = next((n for n in names if n.lower() in question.lower()), None)
-    area = f'the tract area used to approximate {name}' if name else 'the selected tract area'
+    area = f'the area used to approximate {name}' if name else 'the selected areas'
     return f'There are {count:,} mapped {label} listings in {area}.'
 
 
@@ -932,10 +1083,19 @@ def _display_value(column, value):
 
 
 def _supporting_data(rows, locations=None):
-    columns = list(dict.fromkeys(key for row in rows for key in row if key not in _HIDDEN_FIELDS))
+    columns = list(dict.fromkeys(key for row in rows for key in row
+                                 if key not in _HIDDEN_FIELDS and "geoid" not in key.lower()))
+
+    def shown(column, value):
+        value = _display_value(column, value)
+        # Labels the query wrote ("Bookstores in Fenton Village mapped tracts").
+        # Names, addresses, hours and links are left exactly as published.
+        own_text = re.search(r"name|address|street|hours|website|phone|url|cuisine", column, re.I)
+        return _no_tract_words(value) if isinstance(value, str) and not own_text else value
+
     data = {
-        "columns": [_column_label(column) for column in columns],
-        "rows": [[_display_value(column, row.get(column)) for column in columns] for row in rows],
+        "columns": [_no_tract_words(_column_label(column)) for column in columns],
+        "rows": [[shown(column, row.get(column)) for column in columns] for row in rows],
     }
     # One entry per row, aligned with "rows": where that place is, so the page
     # can show it on the map. None for rows that are not a single place.
@@ -954,7 +1114,7 @@ def _answer_statistic(rows):
     if len(counts) != 1:
         return None
     key, value = counts[0]
-    return {'value': value, 'label': _display_value('label', rows[0]['label']) if key == 'estimate' and rows[0].get('label') else _column_label(key)}
+    return {'value': value, 'label': _no_tract_words(_display_value('label', rows[0]['label']) if key == 'estimate' and rows[0].get('label') else _column_label(key))}
 
 
 def _answer_visual(sql, rows, listing_counts):
@@ -980,7 +1140,7 @@ def _answer_visual(sql, rows, listing_counts):
     if not all(type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 100 for value in values):
         return None
     return {
-        "title": _column_label(measure) + " by Census period",
+        "title": _no_tract_words(_column_label(measure)) + " by Census period",
         "scale_max": 100,
         "items": [{"label": label.removeprefix("ACS "), "value": round(value, 1),
                    "display": _display_value(measure, value)} for label, value in sorted(zip(labels, values))],
@@ -998,7 +1158,7 @@ def _to_label_value(rows):
         value = None
         spare_text = None
         for k, v in r.items():
-            if k in _HIDDEN_FIELDS:
+            if k in _HIDDEN_FIELDS or "geoid" in k.lower():
                 continue
             if isinstance(v, str):
                 if label is None:
@@ -1010,9 +1170,11 @@ def _to_label_value(rows):
         # "Census Tract 7019" is not an answer to "where are the cheapest
         # homes". Say the neighbourhood instead - but only ever in place of a
         # tract number. A business row already has a better label: its name.
-        names = place_names.get(str(r.get("geoid") or ""))
-        if names and (label is None or "census tract" in label.lower()):
-            label = " · ".join(names[:2])
+        if label is None or "census tract" in label.lower():
+            match = _TRACT_NAME.match(label or "")
+            geoid = (str(next((v for k, v in r.items() if "geoid" in k.lower() and v), "") or "")
+                     or (match and _tract_geoids_by_name().get(match.group(1))) or "")
+            label = _area_labels().get(geoid) or label
 
         # A business row has no meaningful number — its category is the value.
         if value is None and spare_text:
@@ -1031,7 +1193,7 @@ def _to_label_value(rows):
                             .strip().capitalize())
             else:
                 label = next((str(v) for k, v in r.items() if k not in _HIDDEN_FIELDS), "Result")
-        out.append({"label": label, "value": value})
+        out.append({"label": _no_tract_words(label), "value": value})
 
     # Name the columns after what the query actually returned, so the table
     # says "Neighborhood / Foreign-born residents" instead of "Measure / Value".
@@ -1212,14 +1374,14 @@ def _answer_notes(sql, rows, question):
     industry_place = "industry_employment" in query and _official_industry(query, rows)
     if 'demographic_estimates' in query:
         if any(row.get('available_tracts') != row.get('requested_tracts') for row in rows):
-            notes.append('Some selected tracts have missing estimates; the returned figure is incomplete and is not a full-area total.')
+            notes.append('Some selected areas have missing estimates; the returned figure is incomplete and is not a full-area total.')
         notes.append('Race and Hispanic-origin estimates use ACS 2020-2024. Race-alone categories include Hispanic residents unless an origin is specified; Hispanic origin overlaps race.')
         if demographic_context.is_place(sql, rows):
             notes.append('The Census estimate uses Silver Spring’s official Census boundary.')
         elif _place_geoids(question):
-            notes.append('The mapped Census tracts approximate the named neighborhood or district.')
+            notes.append('The mapped areas approximate the named neighborhood or district.')
         else:
-            notes.append('Race estimates describe the selected Census tracts, not a precise neighborhood boundary.')
+            notes.append('Race estimates describe the selected areas, not a precise neighborhood boundary.')
     if "place_data" in query or industry_place:
         notes.append("The Census estimate uses Silver Spring’s official Census boundary.")
     if re.search(r"\b(?:female|male)_count\b", query):
@@ -1228,9 +1390,9 @@ def _answer_notes(sql, rows, question):
         notes.append("The industry estimate describes employed residents and does not count jobs located here.")
     if re.search(r"\b(?:tract_data|tract_history|businesses|industry_employment)\b", query):
         if _place_geoids(question) and ("places" in query or "businesses" in query):
-            notes.append("The mapped Census tracts approximate the named neighborhood or district.")
+            notes.append("The mapped areas approximate the named neighborhood or district.")
         elif "place_data" not in query and not industry_place and not re.search(r"\bcounty\b", question.lower()):
-            notes.append("Whole Census tracts approximate the area for this result.")
+            notes.append("This result uses whole Census areas, so its boundary is approximate.")
     if "businesses" in query:
         notes.append("OpenStreetMap listings may be incomplete or out of date.")
     if re.search(r'foot[- ]traffic|demand|proxy', json.dumps(rows), re.I) and 'businesses' in query:
@@ -1747,7 +1909,7 @@ def _sources(sql, geoids, rows):
     def add(label, url):
         if url not in seen:
             seen.add(url)
-            out.append({"label": label, "url": url})
+            out.append({"label": _no_tract_words(label), "url": url})
 
     def census(code, title, geography, note, year=2024):
         add(f"ACS {year - 4}-{year}, Table {code}, {title} ({note})",

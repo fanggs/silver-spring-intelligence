@@ -53,7 +53,7 @@ class DemographicTests(unittest.TestCase):
             self.assertIn('B02001_002: White alone', model.call_args.args[0])
             self.assertIn('3,138', result['summary'])
             self.assertIn('White alone', result['summary'])
-            self.assertIn('tract area used to approximate Fenton Village', result['summary'])
+            self.assertIn('area used to approximate Fenton Village', result['summary'])
             self.assertEqual(result['statistic']['value'], 3138)
             self.assertTrue(any('B02001' in source['url'] for source in result['sources']))
             self.assertFalse(any('B01003' in source['url'] for source in result['sources']))
