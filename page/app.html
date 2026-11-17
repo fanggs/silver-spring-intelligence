@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Ask evidence-backed questions about Silver Spring, Maryland, and see the public data behind every answer.">
     <title>CivicLens — Explore Silver Spring</title>
-    <link rel="stylesheet" href="style.css?v=full-questions-1">
+    <link rel="stylesheet" href="style.css?v=visible-workspace-1">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <!-- Light/dark theme (Aryan): applied before first paint, browser-only. -->
@@ -41,13 +41,7 @@
                 <button id="askButton" type="submit">Ask <span aria-hidden="true">↗</span></button>
             </div>
             <p class="app-question-hint">Every answer comes from public data, with the source behind it.</p>
-            <div class="question-examples" aria-label="Example questions">
-                <span>Try a question</span>
-                <button type="button" data-question="Should I open a bookstore in Fenton Village?">Should I open a bookstore in Fenton Village? <span aria-hidden="true">↗</span></button>
-                <button type="button" data-question="How many restaurants are in Fenton Village?">How many restaurants are in Fenton Village? <span aria-hidden="true">↗</span></button>
-                <button type="button" data-question="We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here?">We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here? <span aria-hidden="true">↗</span></button>
-                <button type="button" data-question="How many people who identify as female live in Silver Spring?">How many people who identify as female live in Silver Spring? <span aria-hidden="true">↗</span></button>
-            </div>
+
         </form>
 
         <div class="app-columns">
@@ -96,6 +90,13 @@
                         </details>
                     </details>
                 </div>
+            <div class="question-examples" aria-label="Example questions">
+                <span>Try a question</span>
+                <button type="button" data-question="Should I open a bookstore in Fenton Village?">Should I open a bookstore in Fenton Village? <span aria-hidden="true">↗</span></button>
+                <button type="button" data-question="How many restaurants are in Fenton Village?">How many restaurants are in Fenton Village? <span aria-hidden="true">↗</span></button>
+                <button type="button" data-question="We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here?">We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here? <span aria-hidden="true">↗</span></button>
+                <button type="button" data-question="How many people who identify as female live in Silver Spring?">How many people who identify as female live in Silver Spring? <span aria-hidden="true">↗</span></button>
+            </div>
             </section>
 
             <section class="app-map-panel" aria-labelledby="mapHeading">
