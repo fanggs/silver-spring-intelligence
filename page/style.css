@@ -426,10 +426,10 @@ html{scroll-behavior:auto;}
 .map-viewport .app-map-wrap { flex: 1; min-height: 460px; }
 .map-workspace #map { position: absolute; inset: 0; height: 100%; }
 .map-layer-status { color: var(--muted); margin-top: 10px; font-size: 11px; line-height: 1.5; }
-.app-map-panel .map-legend { align-self: start; width: 100%; max-width: none; background: transparent; border: 0; border-left: 1px solid var(--border); border-radius: 0; padding: 2px 0 0 18px; box-shadow: none; font-size: 12px; line-height: 1.45; }
+.app-map-panel aside.map-legend { align-self: start; width: 100%; max-width: none; background: var(--paper); border: 1px solid var(--border); border-radius: 14px; padding: 16px 14px; box-shadow: none; font-size: 12px; line-height: 1.45; }
 .map-legend h3 { margin: 0 0 4px; font-size: 15px; letter-spacing: -.02em; color: var(--ink); }
 .map-legend-intro { color: var(--muted); font-size: 11px; }
-.map-select-all { min-height: 44px; margin: 12px 0 6px; display: flex; align-items: center; gap: 9px; border-bottom: 1px solid var(--border); color: var(--ink); font-size: 12px; cursor: pointer; }
+.map-select-all { min-height: 44px; margin: 12px 0 6px; padding: 0 8px; display: flex; align-items: center; gap: 9px; border: 0; border-radius: 8px; background: var(--white); color: var(--ink); font-size: 12px; cursor: pointer; }
 .legend-categories { display: grid; gap: 0; }
 .map-legend-row { width: 100%; min-height: 44px; margin: 0; padding: 7px 0; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
 .map-legend-row:hover { background: var(--paper); }
@@ -439,7 +439,7 @@ html{scroll-behavior:auto;}
 .map-legend-label { min-width: 0; color: var(--ink); font-size: 12px; line-height: 1.4; }
 .map-legend-count { color: var(--muted); font-size: 11px; }
 .map-legend-dot { width: 8px; height: 8px; border: 0; box-shadow: none; }
-.map-count-summary { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.map-count-summary { margin-top: 14px; padding-top: 4px; }
 #legendCount { font-size: 12px; font-weight: 700; color: var(--ink); }
 #legendScope { margin-top: 3px; color: var(--muted); font-size: 10px; }
 .map-guide { margin-top: 14px; border-top: 1px solid var(--border); }
@@ -480,7 +480,7 @@ html{scroll-behavior:auto;}
     .question-examples button { min-height: 44px; }
     .map-workspace { grid-template-columns: minmax(0, 1fr); }
     .app-map-panel .app-panel-top { padding-bottom: 14px; }
-    .app-map-panel .map-legend { grid-row: 1; padding: 0 0 14px; border: 0; border-bottom: 1px solid var(--border); }
+    .app-map-panel aside.map-legend { grid-row: 1; padding: 14px; }
     .legend-categories { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
     .map-legend-row { min-height: 44px; padding: 6px 0; gap: 7px; }
     .map-legend-label { font-size: 11px; }
