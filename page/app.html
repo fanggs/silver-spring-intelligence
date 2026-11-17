@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Ask evidence-backed questions about Silver Spring, Maryland, and see the public data behind every answer.">
     <title>CivicLens — Explore Silver Spring</title>
-    <link rel="stylesheet" href="style.css?v=map-checkboxes-1">
+    <link rel="stylesheet" href="style.css?v=map-simple-1">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <!-- Light/dark theme (Aryan): applied before first paint, browser-only. -->
     <script src="theme.js?v=places-theme-1"></script>
-    <link rel="stylesheet" href="theme.css?v=map-checkboxes-1">
+    <link rel="stylesheet" href="theme.css?v=map-simple-1">
 </head>
 <body class="app-page">
     <header class="app-header">
@@ -112,26 +112,28 @@
                         <p id="layerStatus" class="map-layer-status" role="status" aria-live="polite">Loading map layers…</p>
                     </div>
                     <aside id="mapLegend" class="map-legend" aria-labelledby="mapLegendHeading">
-                        <p class="section-label">MAP CONTROLS</p>
-                        <h3 id="mapLegendHeading">Filter places</h3>
-                        <p class="map-legend-intro">Checked categories appear on the map. Uncheck one to hide its dots.</p>
-                        <div class="map-filter-actions" aria-label="Select map categories">
-                            <button id="resetMapFilters" class="map-reset" type="button">Show all</button>
-                            <button id="hideMapFilters" class="map-reset" type="button">Hide all</button>
-                        </div>
-                        <p id="legendScope" class="map-legend-scope">All mapped areas</p>
+                        <h3 id="mapLegendHeading">Show on map</h3>
+                        <p class="map-legend-intro">Uncheck a category to hide it.</p>
+                        <label class="map-select-all"><input id="allMapCategories" type="checkbox" checked><span>All categories</span></label>
                         <div id="legendCategories" class="legend-categories" role="group" aria-label="Show or hide map categories"></div>
-                        <p id="legendCount" class="map-legend-note" role="status" aria-live="polite">Loading listing counts…</p>
-                        <p class="map-filter-hint">Filters change map dots, not your answer.</p>
-                        <div class="map-area-key">
-                            <h4>Areas &amp; boundaries</h4>
-                            <p><span class="map-key-swatch swatch-tract" aria-hidden="true"></span>Census areas</p>
-                            <p><span class="map-key-swatch swatch-highlight" aria-hidden="true"></span>Answer highlights</p>
-                            <p><span class="swatch-boundary" aria-hidden="true"></span>Silver Spring boundary</p>
-                            <p class="map-geography-note">Whole Census areas approximate neighborhoods.</p>
+                        <div class="map-count-summary">
+                            <p id="legendCount" role="status" aria-live="polite">Loading places…</p>
+                            <p id="legendScope">All mapped areas</p>
                         </div>
                     </aside>
                 </div>
+                <details class="map-guide">
+                    <summary>Map key &amp; data notes</summary>
+                    <div class="map-guide-content">
+                        <div class="map-area-key">
+                            <p><span class="map-key-swatch swatch-tract" aria-hidden="true"></span>Census areas</p>
+                            <p><span class="map-key-swatch swatch-highlight" aria-hidden="true"></span>Answer highlights</p>
+                            <p><span class="swatch-boundary" aria-hidden="true"></span>Silver Spring boundary</p>
+                        </div>
+                        <p>Dots are places recorded in OpenStreetMap. Category counts follow the selected areas, not the current zoom. Listings may be incomplete or out of date.</p>
+                        <p>Whole Census areas approximate neighborhoods. Filters change map dots, not your answer.</p>
+                    </div>
+                </details>
             </section>
 
         </div>
@@ -139,6 +141,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=map-checkboxes-1"></script>
+    <script src="script.js?v=map-simple-1"></script>
 </body>
 </html>
