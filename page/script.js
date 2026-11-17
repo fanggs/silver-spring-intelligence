@@ -735,15 +735,24 @@ function initAppPage() {
         refreshLegendForSelection();
     }
 
+    function syncBusinessFilterControls() {
+        element("legendCategories").querySelectorAll("[data-map-group]").forEach(row => {
+            const visible = !hiddenBusinessGroups.has(row.dataset.mapGroup);
+            row.querySelector("input").checked = visible;
+            row.classList.toggle("is-hidden", !visible);
+        });
+    }
+
     function initBusinessLegend() {
         const container = element("legendCategories");
         [...BUSINESS_GROUPS, OTHER_GROUP].forEach(group => {
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = "map-legend-row";
-            button.dataset.mapGroup = group.key;
-            button.setAttribute("aria-pressed", "true");
-            button.setAttribute("aria-label", `Show ${group.label} dots`);
+            const row = document.createElement("label");
+            row.className = "map-legend-row";
+            row.dataset.mapGroup = group.key;
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = true;
+            checkbox.setAttribute("aria-label", group.label);
             const dot = document.createElement("span");
             dot.className = "map-legend-dot";
             dot.style.background = group.color;
@@ -754,37 +763,38 @@ function initAppPage() {
             const count = document.createElement("span");
             count.className = "map-legend-count";
             count.textContent = "—";
-            button.append(dot, label, count);
-            button.addEventListener("click", () => {
-                if (hiddenBusinessGroups.has(group.key)) hiddenBusinessGroups.delete(group.key);
+            row.append(checkbox, dot, label, count);
+            checkbox.addEventListener("change", () => {
+                if (checkbox.checked) hiddenBusinessGroups.delete(group.key);
                 else hiddenBusinessGroups.add(group.key);
-                // Keep the button state usable even while counts are loading.
-                button.setAttribute("aria-pressed", String(!hiddenBusinessGroups.has(group.key)));
-                element("resetMapFilters").hidden = !hiddenBusinessGroups.size;
+                syncBusinessFilterControls();
                 applyBusinessFilters();
             });
-            container.append(button);
+            container.append(row);
         });
         element("resetMapFilters").addEventListener("click", () => {
             hiddenBusinessGroups.clear();
-            container.querySelectorAll("button").forEach(button => button.setAttribute("aria-pressed", "true"));
-            element("resetMapFilters").hidden = true;
+            syncBusinessFilterControls();
+            applyBusinessFilters();
+        });
+        element("hideMapFilters").addEventListener("click", () => {
+            [...BUSINESS_GROUPS, OTHER_GROUP].forEach(group => hiddenBusinessGroups.add(group.key));
+            syncBusinessFilterControls();
             applyBusinessFilters();
         });
     }
 
     function drawBusinessLegend(counts, total, scoped, detail) {
         element("legendScope").textContent = scoped ? "Selected areas · listing counts" : "All mapped areas · listing counts";
-        element("legendCategories").querySelectorAll("[data-map-group]").forEach(button => {
-            const key = button.dataset.mapGroup;
+        element("legendCategories").querySelectorAll("[data-map-group]").forEach(row => {
+            const key = row.dataset.mapGroup;
             const count = counts[key] || 0;
-            button.querySelector(".map-legend-count").textContent = String(count);
-            button.setAttribute("aria-pressed", String(!hiddenBusinessGroups.has(key)));
-            button.title = describeGroup(detail[key]) || "No mapped listings in this area";
+            row.querySelector(".map-legend-count").textContent = String(count);
+            row.title = describeGroup(detail[key]) || "No mapped listings in this area";
         });
+        syncBusinessFilterControls();
         const visible = Object.entries(counts).reduce((sum, [key, count]) => sum + (hiddenBusinessGroups.has(key) ? 0 : count), 0);
         element("legendCount").textContent = `${visible} of ${total} mapped listings shown${scoped ? " in selected areas" : ""}. Source: OpenStreetMap. Listings may be incomplete.`;
-        element("resetMapFilters").hidden = !hiddenBusinessGroups.size;
     }
 
 
