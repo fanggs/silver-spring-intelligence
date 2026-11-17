@@ -741,6 +741,9 @@ function initAppPage() {
             row.querySelector("input").checked = visible;
             row.classList.toggle("is-hidden", !visible);
         });
+        const all = element("allMapCategories");
+        all.checked = hiddenBusinessGroups.size === 0;
+        all.indeterminate = hiddenBusinessGroups.size > 0 && hiddenBusinessGroups.size < BUSINESS_GROUPS.length + 1;
     }
 
     function initBusinessLegend() {
@@ -759,7 +762,7 @@ function initAppPage() {
             dot.setAttribute("aria-hidden", "true");
             const label = document.createElement("span");
             label.className = "map-legend-label";
-            label.textContent = group.label;
+            label.textContent = { service: "Services", civic: "Community", transport: "Transport", other: "Other places" }[group.key] || group.label;
             const count = document.createElement("span");
             count.className = "map-legend-count";
             count.textContent = "—";
@@ -772,29 +775,25 @@ function initAppPage() {
             });
             container.append(row);
         });
-        element("resetMapFilters").addEventListener("click", () => {
+        element("allMapCategories").addEventListener("change", event => {
             hiddenBusinessGroups.clear();
-            syncBusinessFilterControls();
-            applyBusinessFilters();
-        });
-        element("hideMapFilters").addEventListener("click", () => {
-            [...BUSINESS_GROUPS, OTHER_GROUP].forEach(group => hiddenBusinessGroups.add(group.key));
+            if (!event.target.checked) [...BUSINESS_GROUPS, OTHER_GROUP].forEach(group => hiddenBusinessGroups.add(group.key));
             syncBusinessFilterControls();
             applyBusinessFilters();
         });
     }
 
     function drawBusinessLegend(counts, total, scoped, detail) {
-        element("legendScope").textContent = scoped ? "Selected areas · listing counts" : "All mapped areas · listing counts";
+        element("legendScope").textContent = scoped ? "In selected areas" : "All mapped areas";
         element("legendCategories").querySelectorAll("[data-map-group]").forEach(row => {
             const key = row.dataset.mapGroup;
             const count = counts[key] || 0;
             row.querySelector(".map-legend-count").textContent = String(count);
-            row.title = describeGroup(detail[key]) || "No mapped listings in this area";
+            row.title = `${[...BUSINESS_GROUPS, OTHER_GROUP].find(group => group.key === key).label}: ${describeGroup(detail[key]) || "No mapped listings in this area"}`;
         });
         syncBusinessFilterControls();
         const visible = Object.entries(counts).reduce((sum, [key, count]) => sum + (hiddenBusinessGroups.has(key) ? 0 : count), 0);
-        element("legendCount").textContent = `${visible} of ${total} mapped listings shown${scoped ? " in selected areas" : ""}. Source: OpenStreetMap. Listings may be incomplete.`;
+        element("legendCount").textContent = hiddenBusinessGroups.size ? `${visible} of ${total} places shown` : `${total} mapped places`;
     }
 
 
@@ -1197,7 +1196,7 @@ function initAppPage() {
         } else {
             failures.push(businesses.reason.message);
         }
-        if (!businessDataLoaded) element("legendCount").textContent = "Listing counts unavailable. Refresh to try again.";
+        if (!businessDataLoaded) element("legendCount").textContent = "Place counts unavailable.";
 
         // Drawn last so the Silver Spring outline sits above the tract fill,
         // and so it wins the final fitBounds.
@@ -1216,9 +1215,10 @@ function initAppPage() {
             failures.length ? "warning" : "live"
         );
 
+        ui.layerStatus.hidden = !failures.length;
         ui.layerStatus.textContent = failures.length
             ? "Some map layers could not load; you can still ask a question."
-            : "Mapped listings in the tracts used to approximate Silver Spring.";
+            : "";
     }
 
     document.querySelectorAll("[data-question]").forEach(button => {
