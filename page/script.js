@@ -63,7 +63,8 @@ function initAppPage() {
     const tractLayersByGeoid = new Map();
     let activeGeoids = new Set();
     let boundaryLayer = null;
-    let legendControl = null;
+    const hiddenBusinessGroups = new Set();
+    let businessDataLoaded = false;
     let businessPoints = [];
     const placeNamesByGeoid = new Map();
     const tractPropsByGeoid = new Map();
@@ -420,6 +421,7 @@ function initAppPage() {
         let best = null;
         let bestDistance = DOT_HIT_RADIUS;
         businessPoints.forEach((b) => {
+            if (hiddenBusinessGroups.has(b.key)) return;
             const p = map.latLngToContainerPoint([b.lat, b.lng]);
             const d = Math.hypot(p.x - origin.x, p.y - origin.y);
             if (d <= bestDistance) {
@@ -693,7 +695,7 @@ function initAppPage() {
     }
 
     function refreshLegendForSelection() {
-        if (!businessPoints.length) return;
+        if (!businessDataLoaded) return;
 
         // An answer about one district should not sit next to a legend
         // counting the whole town, so the counts follow the highlight.
@@ -724,53 +726,65 @@ function initAppPage() {
     }
 
 
-    function drawBusinessLegend(counts, total, scoped, detail) {
-        if (!map) return;
-        if (legendControl) map.removeControl(legendControl);
+    function applyBusinessFilters() {
+        if (businessLayer) businessPoints.forEach(point => {
+            if (hiddenBusinessGroups.has(point.key)) businessLayer.removeLayer(point.marker);
+            else businessLayer.addLayer(point.marker);
+        });
+        if (map) map.closePopup();
+        refreshLegendForSelection();
+    }
 
-        legendControl = L.control({ position: "topright" });
-        legendControl.onAdd = function () {
-            const box = L.DomUtil.create("div", "map-legend");
-            const disclosure = L.DomUtil.create("details", "map-legend-details", box);
-            const summary = L.DomUtil.create("summary", "", disclosure);
-            summary.textContent = `${total} mapped listings${scoped ? " here" : ""}`;
-
-            const title = L.DomUtil.create("h4", "", disclosure);
-            title.textContent = scoped ? "Businesses here" : "Businesses";
-
-            [...BUSINESS_GROUPS, OTHER_GROUP].forEach((g) => {
-                const n = counts[g.key] || 0;
-                if (!n) return;
-                const row = L.DomUtil.create("div", "map-legend-row", disclosure);
-                const inside = describeGroup(detail && detail[g.key]);
-                if (inside) row.title = inside;
-
-                const dot = L.DomUtil.create("span", "map-legend-dot", row);
-                dot.style.background = g.color;
-
-                const label = L.DomUtil.create("span", "map-legend-label", row);
-                label.textContent = g.label;
-
-                const count = L.DomUtil.create("span", "map-legend-count", row);
-                count.textContent = String(n);
+    function initBusinessLegend() {
+        const container = element("legendCategories");
+        [...BUSINESS_GROUPS, OTHER_GROUP].forEach(group => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "map-legend-row";
+            button.dataset.mapGroup = group.key;
+            button.setAttribute("aria-pressed", "true");
+            button.setAttribute("aria-label", `Show ${group.label} dots`);
+            const dot = document.createElement("span");
+            dot.className = "map-legend-dot";
+            dot.style.background = group.color;
+            dot.setAttribute("aria-hidden", "true");
+            const label = document.createElement("span");
+            label.className = "map-legend-label";
+            label.textContent = group.label;
+            const count = document.createElement("span");
+            count.className = "map-legend-count";
+            count.textContent = "—";
+            button.append(dot, label, count);
+            button.addEventListener("click", () => {
+                if (hiddenBusinessGroups.has(group.key)) hiddenBusinessGroups.delete(group.key);
+                else hiddenBusinessGroups.add(group.key);
+                // Keep the button state usable even while counts are loading.
+                button.setAttribute("aria-pressed", String(!hiddenBusinessGroups.has(group.key)));
+                element("resetMapFilters").hidden = !hiddenBusinessGroups.size;
+                applyBusinessFilters();
             });
+            container.append(button);
+        });
+        element("resetMapFilters").addEventListener("click", () => {
+            hiddenBusinessGroups.clear();
+            container.querySelectorAll("button").forEach(button => button.setAttribute("aria-pressed", "true"));
+            element("resetMapFilters").hidden = true;
+            applyBusinessFilters();
+        });
+    }
 
-            if (!total) {
-                const empty = L.DomUtil.create("div", "map-legend-label", disclosure);
-                empty.textContent = "None recorded here";
-            }
-
-            const note = L.DomUtil.create("p", "map-legend-note", disclosure);
-            // Says "recorded in" on purpose: this is OpenStreetMap's coverage,
-            // not a claim about every business that exists.
-            note.textContent = scoped
-                ? `${total} of ${businessPoints.length} recorded in OpenStreetMap`
-                : `${total} recorded in OpenStreetMap`;
-
-            L.DomEvent.disableClickPropagation(box);
-            return box;
-        };
-        legendControl.addTo(map);
+    function drawBusinessLegend(counts, total, scoped, detail) {
+        element("legendScope").textContent = scoped ? "Selected areas · listing counts" : "All mapped areas · listing counts";
+        element("legendCategories").querySelectorAll("[data-map-group]").forEach(button => {
+            const key = button.dataset.mapGroup;
+            const count = counts[key] || 0;
+            button.querySelector(".map-legend-count").textContent = String(count);
+            button.setAttribute("aria-pressed", String(!hiddenBusinessGroups.has(key)));
+            button.title = describeGroup(detail[key]) || "No mapped listings in this area";
+        });
+        const visible = Object.entries(counts).reduce((sum, [key, count]) => sum + (hiddenBusinessGroups.has(key) ? 0 : count), 0);
+        element("legendCount").textContent = `${visible} of ${total} mapped listings shown${scoped ? " in selected areas" : ""}. Source: OpenStreetMap. Listings may be incomplete.`;
+        element("resetMapFilters").hidden = !hiddenBusinessGroups.size;
     }
 
 
@@ -818,12 +832,14 @@ function initAppPage() {
                 lat: latitude,
                 lng: longitude,
                 point,
-                group
+                group,
+                marker: pin
             });
             drawn += 1;
         });
 
-        refreshLegendForSelection();
+        businessDataLoaded = true;
+        applyBusinessFilters();
     }
 
 
@@ -1116,10 +1132,12 @@ function initAppPage() {
         // wait until the element actually has a size. Once the user has a
         // selection on screen we stop re-framing, so this never fights them.
         let lastWidth = 0;
+        let lastHeight = 0;
         new ResizeObserver((entries) => {
-            const width = entries[0].contentRect.width;
-            if (!width || width === lastWidth) return;
+            const { width, height } = entries[0].contentRect;
+            if (!width || !height || (width === lastWidth && height === lastHeight)) return;
             lastWidth = width;
+            lastHeight = height;
             if (activeGeoids.size && highlightScope !== "area") {
                 if (map) map.invalidateSize();
                 return;
@@ -1169,6 +1187,7 @@ function initAppPage() {
         } else {
             failures.push(businesses.reason.message);
         }
+        if (!businessDataLoaded) element("legendCount").textContent = "Listing counts unavailable. Refresh to try again.";
 
         // Drawn last so the Silver Spring outline sits above the tract fill,
         // and so it wins the final fitBounds.
@@ -1192,16 +1211,33 @@ function initAppPage() {
             : "Mapped listings in the tracts used to approximate Silver Spring.";
     }
 
+    document.querySelectorAll("[data-question]").forEach(button => {
+        button.addEventListener("click", () => {
+            ui.question.value = button.dataset.question;
+            ui.question.focus();
+        });
+    });
+
+    function setAnswerLoading(loading) {
+        element("answerLoading").hidden = !loading;
+        element("answerHeading").textContent = loading ? "Looking for an answer…" : "What the data says";
+        element("answerResult").closest("section.app-answer-panel").setAttribute("aria-busy", String(loading));
+        document.querySelectorAll("[data-question]").forEach(button => { button.disabled = loading; });
+    }
+
     ui.form.addEventListener("submit", async (event) => {
         event.preventDefault();
 
         const question = ui.question.value.trim();
         if (!question) return;
 
+        if (ui.askButton.disabled) return;
         ui.askButton.disabled = true;
+        setAnswerLoading(true);
         showMessage("Checking the available data…");
         activeGeoids = new Set();
         updateHighlights();
+        refreshLegendForSelection();
 
         try {
             if (demoMode) {
@@ -1221,9 +1257,11 @@ function initAppPage() {
             );
         } finally {
             ui.askButton.disabled = false;
+            setAnswerLoading(false);
         }
     });
 
+    initBusinessLegend();
     initMap();
 
     loadLayers().catch((error) => {
