@@ -415,9 +415,41 @@
     border-top-color: #cbd0e5;
 }
 
-/* Only the text inside the home page's center location card. */
-:root[data-theme="dark"] #locationCard,
-:root[data-theme="dark"] #locationCard * {
-    color: #000000;
-    opacity: 1;
+/* Keep landing-page actions together in the header's final grid column. */
+.navbar .header-actions {
+    gap: 12px;
+}
+
+@media (min-width: 901px) and (max-width: 1150px) {
+    .navbar {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+    .navbar .nav-links {
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 900px) {
+    .navbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+    }
+    .navbar .location,
+    .navbar .nav-links {
+        display: none;
+    }
+}
+
+/* Swap only the map boundary color with the manually selected theme. */
+.hero-visual .hero-map-dark {
+    display: none;
+}
+
+[data-theme="dark"] .hero-visual .hero-map-light {
+    display: none;
+}
+
+[data-theme="dark"] .hero-visual .hero-map-dark {
+    display: block;
 }

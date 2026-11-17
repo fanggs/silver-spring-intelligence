@@ -7,7 +7,7 @@
     <title>CivicLens — Silver Spring Community Intelligence</title>
     <link rel="stylesheet" href="style.css?v=places-theme-1">
     <script src="theme.js?v=places-theme-1"></script>
-    <link rel="stylesheet" href="theme.css?v=places-theme-1">
+    <link rel="stylesheet" href="theme.css?v=map-outline-1">
 </head>
 <body>
     <header class="navbar" id="siteHeader">
@@ -19,13 +19,15 @@
             <a href="#about">About</a>
             <a href="#sources">Sources</a>
         </nav>
-        <a href="app.html" class="nav-button">Try CivicLens <span>↗</span></a>
-        <button
-            class="theme-toggle"
-            type="button"
-            aria-label="Switch to dark mode"
-            hidden
-        >Dark mode</button>
+        <div class="header-actions">
+            <button
+                class="theme-toggle"
+                type="button"
+                aria-label="Switch to dark mode"
+                hidden
+            >Dark mode</button>
+            <a href="app.html" class="nav-button">Try CivicLens <span>↗</span></a>
+        </div>
     </header>
 
     <main>
@@ -40,17 +42,13 @@
                 <a href="app.html" class="hero-button">Try CivicLens <span>↗</span></a>
             </div>
 
-            <div class="hero-visual" id="heroVisual" aria-hidden="true">
-                <div class="visual-grid"></div>
-                <div class="circle circle-one"></div>
-                <div class="circle circle-two"></div>
-                <span class="point point-one"></span>
-                <span class="point point-two"></span>
-                <span class="point point-three"></span>
-                <div class="location-card" id="locationCard">
-                    <p>FENTON VILLAGE</p>
-                    <strong>Silver Spring</strong>
-                    <span>Maryland</span>
+            <div class="hero-visual" id="heroVisual">
+                <img class="hero-map-light" src="hero-map.svg?v=clean-map-1" alt="Map of Silver Spring showing the Census place outline, surrounding tracts, and mapped listings" width="720" height="560">
+                <img class="hero-map-dark" src="hero-map-dark.svg?v=outline-1" alt="Map of Silver Spring showing the Census place outline, surrounding tracts, and mapped listings" width="720" height="560">
+                <div class="hero-caption">
+                    <p>SILVER SPRING, MARYLAND</p>
+                    <strong>Explore Silver Spring</strong>
+                    <span>Census boundaries and OpenStreetMap listings</span>
                 </div>
             </div>
         </section>

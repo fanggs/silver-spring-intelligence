@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Ask evidence-backed questions about Silver Spring, Maryland, and see the public data behind every answer.">
     <title>CivicLens — Explore Silver Spring</title>
-    <link rel="stylesheet" href="style.css?v=places-theme-1">
+    <link rel="stylesheet" href="style.css?v=map-sidebar-1">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <!-- Light/dark theme (Aryan): applied before first paint, browser-only. -->
     <script src="theme.js?v=places-theme-1"></script>
-    <link rel="stylesheet" href="theme.css?v=places-theme-1">
+    <link rel="stylesheet" href="theme.css?v=map-sidebar-1">
 </head>
 <body class="app-page">
     <header class="app-header">
@@ -37,10 +37,17 @@
             <label for="questionInput">Ask CivicLens a question</label>
             <div class="app-question-row">
                 <input id="questionInput" type="text" name="question" maxlength="500" required
-                       placeholder="Ask Anything!" autocomplete="off">
+                       placeholder="What would you like to know about Silver Spring?" autocomplete="off">
                 <button id="askButton" type="submit">Ask <span aria-hidden="true">↗</span></button>
             </div>
             <p class="app-question-hint">Every answer comes from public data, with the source behind it.</p>
+            <div class="question-examples" aria-label="Example questions">
+                <span>Try a question</span>
+                <button type="button" data-question="Should I open a bookstore in Fenton Village?">Bookstore decision <span aria-hidden="true">↗</span></button>
+                <button type="button" data-question="How many restaurants are in Fenton Village?">Restaurant count <span aria-hidden="true">↗</span></button>
+                <button type="button" data-question="We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here?">Retail workforce <span aria-hidden="true">↗</span></button>
+                <button type="button" data-question="How many people who identify as female live in Silver Spring?">Female population <span aria-hidden="true">↗</span></button>
+            </div>
         </form>
 
         <div class="app-columns">
@@ -49,6 +56,7 @@
                     <h2 id="answerHeading">What the data says</h2>
                 </div>
                 <p id="answerState" class="answer-state" role="status">Ask a question to see a source-backed answer.</p>
+                <div id="answerLoading" class="answer-loading" hidden aria-hidden="true"><span></span></div>
                 <div id="answerResult" hidden>
                     <p id="answerText" class="app-answer-text" aria-live="polite"></p>
                     <div id="answerStatistic" class="answer-statistic" hidden>
@@ -93,19 +101,33 @@
             <section class="app-map-panel" aria-labelledby="mapHeading">
                 <div class="app-panel-top">
                     <div><p class="section-label">01 / THE PLACE</p><h2 id="mapHeading">Explore the map</h2></div>
-                    <p class="app-panel-hint">Click any area to select it.</p>
+                    <p class="app-panel-hint">Click a dot for details or an area to select it.</p>
                 </div>
-                <div class="app-map-wrap">
-                    <div id="map" aria-label="Map of Silver Spring, Maryland"></div>
-                    <p id="mapFallback" class="app-map-fallback" hidden>Map library could not load. Check your internet connection and refresh.</p>
-                </div>
-                <div class="app-map-footer">
-                    <p class="app-legend">
-                        <span class="swatch-tract"></span> Census tracts
-                        <span class="swatch-highlight"></span> Answer highlights
-                        <span class="swatch-boundary"></span> Silver Spring boundary
-                    </p>
-                    <p id="layerStatus" role="status" aria-live="polite">Loading map layers…</p>
+                <div class="map-workspace">
+                    <div class="map-viewport">
+                        <div class="app-map-wrap">
+                            <div id="map" aria-label="Map of Silver Spring, Maryland"></div>
+                            <p id="mapFallback" class="app-map-fallback" hidden>Map library could not load. Check your internet connection and refresh.</p>
+                        </div>
+                        <p id="layerStatus" class="map-layer-status" role="status" aria-live="polite">Loading map layers…</p>
+                    </div>
+                    <aside id="mapLegend" class="map-legend" aria-labelledby="mapLegendHeading">
+                        <p class="section-label">READ THE MAP</p>
+                        <h3 id="mapLegendHeading">Places &amp; colors</h3>
+                        <p class="map-legend-intro">Each dot is a mapped place. Select a category to show or hide its dots.</p>
+                        <p id="legendScope" class="map-legend-scope">All mapped areas</p>
+                        <div id="legendCategories" class="legend-categories" role="group" aria-label="Show or hide map categories"></div>
+                        <p id="legendCount" class="map-legend-note" role="status" aria-live="polite">Loading listing counts…</p>
+                        <p class="map-filter-hint">Filters change map dots, not your answer.</p>
+                        <button id="resetMapFilters" class="map-reset" type="button" hidden>Show all categories</button>
+                        <div class="map-area-key">
+                            <h4>Areas &amp; boundaries</h4>
+                            <p><span class="map-key-swatch swatch-tract" aria-hidden="true"></span>Census areas</p>
+                            <p><span class="map-key-swatch swatch-highlight" aria-hidden="true"></span>Answer highlights</p>
+                            <p><span class="swatch-boundary" aria-hidden="true"></span>Silver Spring boundary</p>
+                            <p class="map-geography-note">Whole Census areas approximate neighborhoods.</p>
+                        </div>
+                    </aside>
                 </div>
             </section>
 
@@ -114,6 +136,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=area-names-1"></script>
+    <script src="script.js?v=map-sidebar-1"></script>
 </body>
 </html>
