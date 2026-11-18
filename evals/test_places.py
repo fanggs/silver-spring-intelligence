@@ -209,6 +209,20 @@ class ListingDetailsTests(unittest.TestCase):
         self.assertFalse(details["truncated"])
         self.assertTrue(all("website" in row and "opening_hours" in row for row in details["rows"]))
 
+    @unittest.skipUnless(DB.exists(), "built database not present")
+    def test_aliased_table_and_distinct_area_subquery_still_list(self):
+        sql = ("SELECT COUNT(*) AS restaurant_listing_count, MIN(b.source_url) AS source_url FROM businesses b "
+               "WHERE b.osm_amenity = 'restaurant' AND b.geoid IN (SELECT DISTINCT p.geoid FROM places p "
+               "WHERE LOWER(p.name) = LOWER('Fenton Village'))")
+        rows, _ = main._run_query(sql)
+        details = main._listing_details(sql, rows)
+        self.assertEqual(len(details["rows"]), rows[0]["restaurant_listing_count"])
+
+    @unittest.skipUnless(DB.exists(), "built database not present")
+    def test_list_that_disagrees_with_the_returned_count_is_dropped(self):
+        sql = "SELECT COUNT(*) AS listing_count FROM businesses WHERE osm_shop = 'books'"
+        self.assertIsNone(main._listing_details(sql, [{"listing_count": 999999}]))
+
     def test_counts_that_could_list_a_different_set_are_refused(self):
         for sql in (
             "SELECT COUNT(DISTINCT name) FROM businesses WHERE osm_shop = 'books'",
