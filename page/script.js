@@ -197,7 +197,9 @@ function initAppPage() {
         // selection inside it, so the map shades it softly instead of
         // lighting 19 tracts up as if they were a result.
         highlightScope = ["area", "boundary", "none"].includes(payload?.highlight_scope) ? payload.highlight_scope : "selection";
-        updateHighlights();
+        // An answer with places frames those places (renderAnswerPlaces);
+        // a second, animated zoom to the areas here would override it.
+        updateHighlights({ keepView: answer && answerPlaces(payload).places.length > 0 });
         refreshLegendForSelection();
 
         if (!answer) {
@@ -434,6 +436,9 @@ function initAppPage() {
         answerPlaceList = places.slice().sort((a, b) => a.name.localeCompare(b.name));
         drawAnswerRings(answerPlaceList);
         element("answerPlacesMap").hidden = !answerRingLayer;
+        // Frame the answer's own places rather than the whole Census areas
+        // around them, so the rings are as spread out as they can be.
+        fitAnswerPlaces();
         section.hidden = !answerPlaceList.length;
         if (section.hidden) return;
         const count = answerPlaceList.length.toLocaleString();
@@ -456,23 +461,58 @@ function initAppPage() {
         answerRingLayer = L.featureGroup().addTo(map);
         places.forEach(place => {
             const latlng = [place.latitude, place.longitude];
-            L.circleMarker(latlng, {
+            const halo = L.circleMarker(latlng, {
                 pane: "businessPane", interactive: false,
-                radius: 10, color: "#ffffff", weight: 5, fill: false, opacity: 0.95
+                color: "#ffffff", fill: false, opacity: 0.9
             }).addTo(answerRingLayer);
             const popup = document.createElement("div");
             const title = document.createElement("strong");
             title.textContent = place.name;
             popup.append(title, ...placeFacts(place));
-            L.circleMarker(latlng, {
+            const ring = L.circleMarker(latlng, {
                 pane: "businessPane", bubblingMouseEvents: false,
-                radius: 10, color: "#152019", weight: 2.5, fillColor: "#152019", fillOpacity: 0
+                color: "#152019", fillColor: "#152019", fillOpacity: 0
             }).bindPopup(popup).addTo(answerRingLayer);
+            ring.halo = halo;
         });
+        sizeAnswerRings();
         const swatch = document.createElement("span");
         swatch.className = "map-ring-swatch";
         swatch.setAttribute("aria-hidden", "true");
         note.append(swatch, `Ringed: ${places.length.toLocaleString()} ${places.length === 1 ? "place" : "places"} from your answer`);
+    }
+
+    // Zoomed out, 43 full-size rings merge into one dark blob, so rings
+    // start just outside the 6px category dot and grow as the map zooms in.
+    function sizeAnswerRings() {
+        if (!map || !answerRingLayer) return;
+        const zoom = map.getZoom();
+        const close = zoom >= 15;
+        const radius = zoom >= 17 ? 10 : close ? 8.5 : 7.5;
+        const weight = close ? 2.25 : 1.25;
+        answerRingLayer.eachLayer(layer => {
+            if (!layer.halo) return;
+            layer.setRadius(radius).setStyle({ weight, opacity: close ? 1 : 0.75 });
+            // The white halo only helps once rings stop overlapping.
+            layer.halo.setRadius(radius).setStyle({ weight: weight + 2, opacity: close ? 0.9 : 0 });
+        });
+    }
+
+    function fitAnswerPlaces() {
+        if (!map || !answerRingLayer) return false;
+        const bounds = answerRingLayer.getBounds();
+        if (!bounds.isValid()) return false;
+        // Leaflet ignores a new view while a zoom animation is running
+        // (e.g. the area highlight's), so frame the places once it ends.
+        if (map._animatingZoom) {
+            map.once("zoomend", fitAnswerPlaces);
+            return true;
+        }
+        map.invalidateSize();
+        // Instant: this runs again when the layout settles, and a second
+        // fit during an animated zoom cancels both.
+        map.fitBounds(bounds.pad(0.15), { maxZoom: 16, animate: false });
+        return true;
     }
 
     function showAllAnswerPlaces() {
@@ -1160,6 +1200,7 @@ function initAppPage() {
         map.getPane("businessPane").style.zIndex = 450;
 
         map.on("click", handleMapClick);
+        map.on("zoomend", sizeAnswerRings);
 
         watchMapSize();
 
@@ -1279,6 +1320,9 @@ function initAppPage() {
             if (!width || !height || (width === lastWidth && height === lastHeight)) return;
             lastWidth = width;
             lastHeight = height;
+            // The layout settles after an answer renders; frame its places
+            // again at the final size rather than the size mid-render.
+            if (fitAnswerPlaces()) return;
             if (activeGeoids.size && highlightScope !== "area") {
                 if (map) map.invalidateSize();
                 return;
