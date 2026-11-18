@@ -705,7 +705,11 @@ def _answer_question(q: Question):
     if geography['kind'] == 'census_place':
         highlights, scope = [], 'boundary'
 
-    summary, next_step = _no_meta_sentences(summary), _no_meta_sentences(next_step)
+    cleaned = _no_meta_sentences(summary)
+    if cleaned != summary:
+        _log_gap(question, "dropped_meta", {"before": summary, "after": cleaned}, executed_sql)
+    summary, next_step = cleaned, _no_meta_sentences(next_step)
+    summary = _anchor_dangling_start(summary, rows)
     summary, next_step = _no_tract_words(summary), _no_tract_words(next_step)
     notes = [_no_tract_words(note) for note in notes]
     return {
@@ -742,6 +746,24 @@ _META_SENTENCE = re.compile(
     r"|\bI\s+(?:can|could)\s+(?:only\s+)?see\b|\bI\s+(?:am|was)\s+(?:only\s+)?shown\b"
     r"|\brewrit(?:e|ten|ing)\b",
     re.I)
+
+
+_DANGLING_START = re.compile(r"^(?:Those|These|They|Them|That|This|It|Its)\b")
+
+
+def _anchor_dangling_start(text, rows):
+    """Give an answer back the total it refers to when trimming removed it.
+
+    Dropping a sentence (an unverified figure, or rewrite chatter) can leave
+    "Those include 7-Eleven, Aldi..." with nothing for "those" to mean. The
+    total comes from the query's own total_count, so no new number appears.
+    """
+    if not text or not _DANGLING_START.match(text) or not rows:
+        return text
+    total = rows[0].get("total_count")
+    if type(total) is not int or total <= 0:
+        return text
+    return f"The data returned {total:,} matching mapped listings. {text}"
 
 
 def _no_meta_sentences(text):
