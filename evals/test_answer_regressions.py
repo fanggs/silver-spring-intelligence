@@ -146,3 +146,17 @@ class MetaSentenceTests(unittest.TestCase):
         from answers import main
         text = "Fenton Village has 2 mapped bookstore listings. Ask nearby residents where they buy books now."
         self.assertEqual(main._no_meta_sentences(text), text)
+
+
+class DanglingStartTests(unittest.TestCase):
+    def test_trimmed_list_answer_gets_its_total_back(self):
+        from answers import main
+        text = "Those include 7-Eleven, Aldi and Bestway. The table has the full set."
+        self.assertEqual(main._anchor_dangling_start(text, [{"name": "Aldi", "total_count": 157}]),
+                         "The data returned 157 matching mapped listings. " + text)
+
+    def test_nothing_added_without_a_returned_total(self):
+        from answers import main
+        text = "Those include Aldi."
+        self.assertEqual(main._anchor_dangling_start(text, [{"name": "Aldi"}]), text)
+        self.assertEqual(main._anchor_dangling_start("There are 7 bars.", [{"total_count": 7}]), "There are 7 bars.")
