@@ -492,50 +492,70 @@ html{scroll-behavior:auto;}
 }
 
 
-/* Minimal editorial map caption */
+
+/* Clean, aligned homepage map layout */
 
 #heroVisual {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 18px;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
 }
 
+/* Text sits ABOVE the map, not on top of it */
 #heroVisual .hero-caption {
-    position: absolute;
-    top: 3%;
-    left: 5%;
-    right: auto;
-    bottom: auto;
+    position: static;
+    inset: auto;
     transform: none;
-    z-index: 2;
+    order: -1;
+    z-index: auto;
 
-    width: max-content;
-    max-width: 75%;
-    padding: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0 5%;
+    margin: 0;
+
+    text-align: left;
+    background: transparent;
     border: none;
     border-radius: 0;
     box-shadow: none;
-    background: transparent;
+}
 
-    text-align: left;
+/* Keep the map responsive */
+#heroVisual .hero-map-light,
+#heroVisual .hero-map-dark {
+    position: static;
+    order: 1;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    margin: 0;
+    object-fit: contain;
 }
 
 /* Location label */
 #heroVisual .hero-caption p {
+    margin: 0 0 5px;
     font-size: 10px;
     letter-spacing: 1.5px;
     font-weight: 600;
-    text-transform: uppercase;
-    margin: 0 0 5px;
 }
 
-/* Main heading */
+/* Main map title */
 #heroVisual .hero-caption strong {
     display: block;
+    margin: 0 0 4px;
     font-size: 20px;
-    font-weight: 600;
-    margin-bottom: 4px;
+    line-height: 1.3;
 }
 
-/* Supporting text */
+/* Supporting information */
 #heroVisual .hero-caption span {
     display: block;
     font-size: 12px;
@@ -543,16 +563,13 @@ html{scroll-behavior:auto;}
     opacity: 0.75;
 }
 
-/* Mobile adjustments */
+/* Smaller screens */
 @media (max-width: 600px) {
-    #heroVisual .hero-caption {
-        top: 2%;
-        left: 5%;
-        max-width: 85%;
+    #heroVisual {
+        gap: 12px;
     }
 
     #heroVisual .hero-caption strong {
-        font-size: 17px;
+        font-size: 18px;
     }
 }
-
