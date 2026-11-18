@@ -60,6 +60,8 @@ function initAppPage() {
     let businessLayer = null;
     // The pin for a place the user clicked in an answer. One at a time.
     let focusMarker = null;
+    // Rings around the places an answer is about.
+    let answerRingLayer = null;
     const tractLayersByGeoid = new Map();
     let activeGeoids = new Set();
     let boundaryLayer = null;
@@ -214,7 +216,7 @@ function initAppPage() {
         if (focusMarker && map) { map.removeLayer(focusMarker); focusMarker = null; }
         renderVisual(payload?.visual);
         renderSupportingData(payload);
-        renderListingDetails(payload.listing_details);
+        renderAnswerPlaces(payload);
         renderStatistic(payload);
         ui.sources.replaceChildren();
 
@@ -238,6 +240,20 @@ function initAppPage() {
             ui.sources.appendChild(item);
         }
 
+    }
+
+    // Headings for the "as stored" table: readable words, with the stored
+    // field name kept in each heading's tooltip for traceability.
+    const FIELD_LABELS = {
+        source_url: "Source", acs_vintage: "Census survey years", geoid: "Census area ID",
+        margin_of_error: "Margin of error (±)", latitude: "Latitude", longitude: "Longitude",
+        listing_count: "Mapped listings", measure_label: "Measure", address_basis: "Address from"
+    };
+
+    function fieldLabel(key) {
+        if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+        const text = String(key).replace(/_margin_of_error$/, " margin of error (±)").replaceAll("_", " ").replace(/\bpct\b/g, "%");
+        return text.charAt(0).toUpperCase() + text.slice(1);
     }
 
     function renderSupportingData(payload) {
@@ -264,7 +280,8 @@ function initAppPage() {
             fields.forEach(key => {
                 const th = document.createElement("th");
                 th.scope = "col";
-                th.textContent = key.replaceAll("_", " ");
+                th.textContent = fieldLabel(key);
+                th.title = `Stored as ${key}`;
                 header.append(th);
             });
             const head = document.createElement("thead");
@@ -279,6 +296,13 @@ function initAppPage() {
                     const value = record[key];
                     if (key === "address" && place) {
                         td.append(placeButton(value == null ? "Show on map" : String(value), place));
+                    } else if (/url$/i.test(key) && validUrl(value)) {
+                        const link = document.createElement("a");
+                        link.href = validUrl(value);
+                        link.target = "_blank";
+                        link.rel = "noopener noreferrer";
+                        link.textContent = "Open source";
+                        td.append(link);
                     } else {
                         td.textContent = value == null ? "Not available" : typeof value === "object" ? JSON.stringify(value) : String(value);
                     }
@@ -323,33 +347,141 @@ function initAppPage() {
         }
     }
 
-    function renderListingDetails(details) {
-        const section = element("listingDetails");
-        const list = element("listingRecords");
-        const status = element("listingRecordsStatus");
-        list.replaceChildren();
-        section.hidden = !Array.isArray(details?.rows) || !details.rows.length;
-        if (section.hidden) return;
-        status.textContent = details.truncated ? "Showing the first 200 places only. The total above counts all of them, including ones not listed here." : `${details.rows.length} matching mapped records. Operating status is not verified.`;
-        details.rows.forEach(record => {
-            const item = document.createElement("li");
-            const label = `${record.name || "Unnamed listing"} · ${String(record.category || "Unclassified").replaceAll("_", " ")}`;
-            const place = validPlace(record);
-            if (place) {
-                item.append(placeButton(label, place));
-                const where = document.createElement("span");
-                where.className = "listing-address";
-                where.textContent = place.address || "No street address in OpenStreetMap";
-                item.append(where);
-            } else {
-                const link = document.createElement("a");
-                link.textContent = label;
-                const url = validUrl(record.source_url);
-                if (url) { link.href = url; link.target = "_blank"; link.rel = "noopener noreferrer"; }
-                item.append(link);
+    // The places an answer is about, as one list: the records behind a count
+    // ("43 restaurants" -> those 43), or the places a list answer returned.
+    // Each comes straight from the API response; nothing is added or ranked.
+    function answerPlaces(payload) {
+        const details = payload?.listing_details;
+        if (Array.isArray(details?.rows) && details.rows.length) {
+            return {
+                truncated: Boolean(details.truncated),
+                places: details.rows.map(record => {
+                    const place = validPlace(record);
+                    return place && { ...place, name: place.name || "Unnamed listing", category: record.category, geoid: record.geoid };
+                }).filter(Boolean)
+            };
+        }
+        const locations = Array.isArray(payload?.supporting_data?.locations) ? payload.supporting_data.locations : [];
+        const seen = new Set();
+        const places = locations.map(validPlace).filter(place => {
+            if (!place) return false;
+            const key = `${place.name}|${place.latitude}|${place.longitude}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        }).map(place => ({ ...place, name: place.name || "Unnamed listing" }));
+        return { truncated: false, places };
+    }
+
+    const PLACES_SHOWN_FIRST = 6;
+    let answerPlaceList = [];
+
+    function prettyCategory(value) {
+        const text = String(value || "").replaceAll("_", " ").trim();
+        return text ? text.charAt(0).toUpperCase() + text.slice(1) : "";
+    }
+
+    function placeItem(place) {
+        const item = document.createElement("li");
+        item.append(placeButton(place.name, place));
+        const meta = document.createElement("span");
+        meta.className = "answer-place-meta";
+        meta.textContent = [prettyCategory(place.category), place.address || "No street address listed"].filter(Boolean).join(" · ");
+        item.append(meta);
+        if (place.opening_hours) {
+            const hours = document.createElement("span");
+            hours.className = "answer-place-hours";
+            hours.textContent = `Hours as listed: ${readableHours(place.opening_hours).join("; ")}`;
+            item.append(hours);
+        }
+        if (place.website || place.phone) {
+            const links = document.createElement("span");
+            links.className = "answer-place-links";
+            if (place.website) {
+                const site = document.createElement("a");
+                site.href = place.website;
+                site.target = "_blank";
+                site.rel = "noopener noreferrer";
+                site.textContent = "Website";
+                site.setAttribute("aria-label", `${place.name} website (opens in a new tab)`);
+                links.append(site);
             }
-            list.append(item);
+            if (place.phone) {
+                const call = document.createElement("a");
+                call.href = "tel:" + place.phone.replace(/[^\d+]/g, "");
+                call.textContent = place.phone;
+                links.append(call);
+            }
+            item.append(links);
+        }
+        return item;
+    }
+
+    function showAnswerPlaces(expanded) {
+        const list = element("answerPlacesList");
+        const more = element("answerPlacesMore");
+        const shown = expanded ? answerPlaceList : answerPlaceList.slice(0, PLACES_SHOWN_FIRST);
+        list.replaceChildren(...shown.map(placeItem));
+        const hiddenCount = answerPlaceList.length - shown.length;
+        more.hidden = answerPlaceList.length <= PLACES_SHOWN_FIRST;
+        more.textContent = hiddenCount > 0 ? `Show all ${answerPlaceList.length.toLocaleString()} places` : "Show fewer";
+        more.setAttribute("aria-expanded", String(expanded));
+    }
+
+    function renderAnswerPlaces(payload) {
+        const section = element("answerPlaces");
+        const { places, truncated } = answerPlaces(payload);
+        answerPlaceList = places.slice().sort((a, b) => a.name.localeCompare(b.name));
+        drawAnswerRings(answerPlaceList);
+        element("answerPlacesMap").hidden = !answerRingLayer;
+        section.hidden = !answerPlaceList.length;
+        if (section.hidden) return;
+        const count = answerPlaceList.length.toLocaleString();
+        const noun = answerPlaceList.length === 1 ? "place" : "places";
+        element("answerPlacesIntro").textContent = truncated
+            ? `The first ${count} mapped ${noun} behind this answer. The total above counts all of them. Each is ringed on the map; click a name to zoom to it.`
+            : `The ${count} mapped ${noun} behind this answer, ringed on the map. Click a name to zoom to it.`;
+        showAnswerPlaces(false);
+    }
+
+    // Rings around the answer's places, drawn over the category dots so the
+    // link between the answer and the map is visible without clicking.
+    function drawAnswerRings(places) {
+        const note = element("legendAnswerPlaces");
+        if (answerRingLayer && map) map.removeLayer(answerRingLayer);
+        answerRingLayer = null;
+        note.hidden = !places.length;
+        note.textContent = "";
+        if (!map || !places.length) return;
+        answerRingLayer = L.featureGroup().addTo(map);
+        places.forEach(place => {
+            const latlng = [place.latitude, place.longitude];
+            L.circleMarker(latlng, {
+                pane: "businessPane", interactive: false,
+                radius: 10, color: "#ffffff", weight: 5, fill: false, opacity: 0.95
+            }).addTo(answerRingLayer);
+            const popup = document.createElement("div");
+            const title = document.createElement("strong");
+            title.textContent = place.name;
+            popup.append(title, ...placeFacts(place));
+            L.circleMarker(latlng, {
+                pane: "businessPane", bubblingMouseEvents: false,
+                radius: 10, color: "#152019", weight: 2.5, fillColor: "#152019", fillOpacity: 0
+            }).bindPopup(popup).addTo(answerRingLayer);
         });
+        const swatch = document.createElement("span");
+        swatch.className = "map-ring-swatch";
+        swatch.setAttribute("aria-hidden", "true");
+        note.append(swatch, `Ringed: ${places.length.toLocaleString()} ${places.length === 1 ? "place" : "places"} from your answer`);
+    }
+
+    function showAllAnswerPlaces() {
+        if (!map || !answerRingLayer) return;
+        const bounds = answerRingLayer.getBounds();
+        if (!bounds.isValid()) return;
+        element("map")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        map.closePopup();
+        map.fitBounds(bounds.pad(0.2), { maxZoom: 17 });
     }
 
     function renderStatistic(payload) {
@@ -1248,6 +1380,7 @@ function initAppPage() {
         activeGeoids = new Set();
         updateHighlights();
         refreshLegendForSelection();
+        drawAnswerRings([]);
 
         try {
             if (demoMode) {
@@ -1270,6 +1403,11 @@ function initAppPage() {
             setAnswerLoading(false);
         }
     });
+
+    element("answerPlacesMore").addEventListener("click", event => {
+        showAnswerPlaces(event.currentTarget.getAttribute("aria-expanded") !== "true");
+    });
+    element("answerPlacesMap").addEventListener("click", showAllAnswerPlaces);
 
     initBusinessLegend();
     initMap();
