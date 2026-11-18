@@ -524,7 +524,7 @@ def _answer_question(q: Question):
             + ("Every listed place is shown below your answer in a list with its street address, and "
                "clicking it shows it on the map. Do not repeat addresses in your answer: name a few "
                "places if useful, and say their addresses are in the list below and they are ringed on the map. "
-               if locations else "") +
+               if locations and sum(1 for place in locations if place) <= MAX_LISTED_PLACES else "") +
             "Never state latitude or longitude coordinates. Name an area only by its 'area' "
             "value, written exactly (e.g. 'Northwest Park / Oakview'); never write 'Census tract', 'tract' or a "
             "tract number. "
@@ -1001,6 +1001,11 @@ def _single_listing_count(question, sql, rows):
     name = next((n for n in names if n.lower() in question.lower()), None)
     area = f'the area used to approximate {name}' if name else 'the selected areas'
     return f'There are {count:,} mapped {label} listings in {area}.'
+
+
+# The page lists an answer's places only up to this many (page/script.js
+# MAX_ANSWER_PLACES); past it the answer must not point at a list.
+MAX_LISTED_PLACES = 60
 
 
 def _listing_details(sql, rows=None):

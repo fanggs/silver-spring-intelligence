@@ -355,6 +355,7 @@ function initAppPage() {
     // Past this many, a list stops helping: "461 businesses in Silver Spring"
     // would list 200 ATMs, churches and apartments and ring the whole map.
     // The category dots already show them, so the section stays hidden.
+    // Keep equal to MAX_LISTED_PLACES in answers/main.py.
     const MAX_ANSWER_PLACES = 60;
 
     function metresBetween(a, b) {
