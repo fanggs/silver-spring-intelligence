@@ -352,27 +352,48 @@ function initAppPage() {
     // The places an answer is about, as one list: the records behind a count
     // ("43 restaurants" -> those 43), or the places a list answer returned.
     // Each comes straight from the API response; nothing is added or ranked.
+    // Past this many, a list stops helping: "461 businesses in Silver Spring"
+    // would list 200 ATMs, churches and apartments and ring the whole map.
+    // The category dots already show them, so the section stays hidden.
+    const MAX_ANSWER_PLACES = 60;
+
+    function metresBetween(a, b) {
+        const dy = (a.latitude - b.latitude) * 111320;
+        const dx = (a.longitude - b.longitude) * 111320 * Math.cos(a.latitude * Math.PI / 180);
+        return Math.hypot(dx, dy);
+    }
+
     function answerPlaces(payload) {
         const details = payload?.listing_details;
+        let raw;
+        let truncated = false;
         if (Array.isArray(details?.rows) && details.rows.length) {
-            return {
-                truncated: Boolean(details.truncated),
-                places: details.rows.map(record => {
-                    const place = validPlace(record);
-                    return place && { ...place, name: place.name || "Unnamed listing", category: record.category, geoid: record.geoid };
-                }).filter(Boolean)
-            };
+            truncated = Boolean(details.truncated);
+            raw = details.rows.map(record => {
+                const place = validPlace(record);
+                return place && { ...place, category: record.category, geoid: record.geoid };
+            });
+        } else {
+            raw = (Array.isArray(payload?.supporting_data?.locations) ? payload.supporting_data.locations : []).map(validPlace);
         }
-        const locations = Array.isArray(payload?.supporting_data?.locations) ? payload.supporting_data.locations : [];
-        const seen = new Set();
-        const places = locations.map(validPlace).filter(place => {
-            if (!place) return false;
-            const key = `${place.name}|${place.latitude}|${place.longitude}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        }).map(place => ({ ...place, name: place.name || "Unnamed listing" }));
-        return { truncated: false, places };
+        // The same place can come from two sources (a business listing and
+        // a venue record): one entry per name within ~75 m of each other.
+        const places = [];
+        raw.filter(Boolean).forEach(place => {
+            const name = place.name.trim();
+            const twin = name && places.find(seen => seen.name.trim().toLowerCase() === name.toLowerCase()
+                && metresBetween(seen, place) < 75);
+            if (twin) {
+                ["address", "opening_hours", "website", "phone", "category"].forEach(key => { if (!twin[key] && place[key]) twin[key] = place[key]; });
+                return;
+            }
+            places.push({ ...place, name, unnamed: !name });
+        });
+        if (truncated || places.length > MAX_ANSWER_PLACES) return { places: [], truncated };
+        places.forEach(place => {
+            if (place.unnamed) place.name = `Unnamed ${prettyCategory(place.category).toLowerCase() || "listing"}`;
+        });
+        return { places, truncated: false };
     }
 
     const PLACES_SHOWN_FIRST = 6;
@@ -432,8 +453,9 @@ function initAppPage() {
 
     function renderAnswerPlaces(payload) {
         const section = element("answerPlaces");
-        const { places, truncated } = answerPlaces(payload);
-        answerPlaceList = places.slice().sort((a, b) => a.name.localeCompare(b.name));
+        const { places } = answerPlaces(payload);
+        // A to Z, with unnamed listings last.
+        answerPlaceList = places.slice().sort((a, b) => (a.unnamed - b.unnamed) || a.name.localeCompare(b.name));
         drawAnswerRings(answerPlaceList);
         element("answerPlacesMap").hidden = !answerRingLayer;
         // Frame the answer's own places rather than the whole Census areas
@@ -441,11 +463,11 @@ function initAppPage() {
         fitAnswerPlaces();
         section.hidden = !answerPlaceList.length;
         if (section.hidden) return;
-        const count = answerPlaceList.length.toLocaleString();
-        const noun = answerPlaceList.length === 1 ? "place" : "places";
-        element("answerPlacesIntro").textContent = truncated
-            ? `The first ${count} mapped ${noun} behind this answer. The total above counts all of them. Each is ringed on the map; click a name to zoom to it.`
-            : `The ${count} mapped ${noun} behind this answer, ringed on the map. Click a name to zoom to it.`;
+        const single = answerPlaceList.length === 1;
+        element("answerPlacesMap").textContent = single ? "Show on map" : "Show all on map";
+        element("answerPlacesIntro").textContent = single
+            ? "Ringed on the map. Click the name to zoom to it."
+            : `The ${answerPlaceList.length.toLocaleString()} mapped places behind this answer, ringed on the map. Click a name to zoom to it.`;
         showAnswerPlaces(false);
     }
 
