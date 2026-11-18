@@ -521,9 +521,9 @@ def _answer_question(q: Question):
             f"These rows came back from the database:\n"
             f"{json.dumps(display_rows, indent=2)}\n\n"
             f"Notes displayed separately: {' '.join(notes)}\n\n"
-            + ("Every listed place is shown below your answer in a table with its street address, and "
+            + ("Every listed place is shown below your answer in a list with its street address, and "
                "clicking it shows it on the map. Do not repeat addresses in your answer: name a few "
-               "places if useful, and say their addresses and map locations are in the table below. "
+               "places if useful, and say their addresses are in the list below and they are ringed on the map. "
                if locations else "") +
             "Never state latitude or longitude coordinates. Name an area only by its 'area' "
             "value, written exactly (e.g. 'Northwest Park / Oakview'); never write 'Census tract', 'tract' or a "
