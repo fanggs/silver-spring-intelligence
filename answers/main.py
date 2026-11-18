@@ -1004,14 +1004,29 @@ def _single_listing_count(question, sql, rows):
 
 
 def _listing_details(sql):
-    """Expose records behind simple aggregates using the original filter."""
-    if not re.match(r'^SELECT\s+COUNT\s*\(', sql, re.I) or re.search(r'\b(?:join|union|group\s+by|having)\b', sql, re.I):
+    """Expose the records behind a simple count, using the count's own filter.
+
+    "How many restaurants are in Fenton Village?" returns one number. The
+    same WHERE clause, run again, lists the places that number counted, so
+    the page can name them and ring them on the map. Only a single,
+    ungrouped COUNT(*) over businesses or venues qualifies: anything else
+    (COUNT(DISTINCT), GROUP BY, JOIN, UNION, several counts) could list a
+    different set than the figure on screen.
+    """
+    text = sql.strip().rstrip(';')
+    if (len(re.findall(r'\bCOUNT\s*\(', text, re.I)) != 1
+            or not re.search(r'\bCOUNT\s*\(\s*\*\s*\)', text, re.I)
+            or not re.match(r'^SELECT\b', text, re.I)
+            or re.search(r'\b(?:join|union|group\s+by|having|distinct)\b', text, re.I)):
         return None
-    match = re.search(r'\bFROM\s+businesses\s+WHERE\s+(.+)', sql, re.I | re.S)
-    if not match:
+    match = re.search(r'\bFROM\s+(businesses|community_venues)\s+WHERE\s+(.+)', text, re.I | re.S)
+    if not match or len(re.findall(r'\bFROM\b', text[:match.start()], re.I)):
         return None
+    table = match[1].lower()
+    where = re.sub(r'\s+(?:ORDER\s+BY|LIMIT)\b.*$', '', match[2], flags=re.I | re.S)
+    extra = ', website AS venue_website' if table == 'community_venues' else ''
     try:
-        records, _ = _run_query('SELECT name, category, geoid, source_url, latitude, longitude FROM businesses WHERE ' + match[1], max_rows=201)
+        records, _ = _run_query(f'SELECT name, category, geoid, source_url, latitude, longitude{extra} FROM {table} WHERE ' + where, max_rows=201)
     except (UnsafeQuery, sqlite3.Error):
         return None
     lookup = _place_lookup(record.get('source_url') for record in records[:200])
@@ -1019,6 +1034,9 @@ def _listing_details(sql):
         place = lookup.get(_osm_ref(record.get('source_url')))
         for key in ('address', 'address_basis', 'opening_hours', 'website', 'phone'):
             record[key] = place.get(key) if place else None
+        venue_website = record.pop('venue_website', None)
+        if not record.get('website') and venue_website:
+            record['website'] = venue_website
     return {'rows': records[:200], 'truncated': len(records) > 200}
 
 
@@ -1035,8 +1053,8 @@ _HIDDEN_FIELDS = {"geoid", "source_url", "state_fips", "county_fips", "tract_cod
 
 _COLUMN_LABELS = {
     "population_count":                    "residents",
-    "female_count":                        "residents classified female by ACS",
-    "male_count":                          "residents classified male by ACS",
+    "female_count":                        "female residents (Census sex)",
+    "male_count":                          "male residents (Census sex)",
     "employed_residents":                  "employed residents",
     "foreign_born_count":                  "foreign-born residents",
     "median_income":                       "median household income",
@@ -1052,18 +1070,39 @@ _COLUMN_LABELS = {
     "count":                               "businesses",
 }
 _COLUMN_LABELS.update({
-    "acs_vintage": "Census period",
+    "acs_vintage": "Census survey years",
     "listing_count": "Mapped listings",
+    "measure_label": "Measure",
+    "estimate": "Estimate",
+    "margin_of_error": "Margin of error (±)",
     "transit_pct": "Public transit commute share",
     "transit_commuters": "Public transit commuters",
-    "population_margin_of_error": "Population margin of error",
-    "female_margin_of_error": "Female estimate margin of error",
-    "male_margin_of_error": "Male estimate margin of error",
+    "population_margin_of_error": "Margin of error (±)",
+    "female_margin_of_error": "Margin of error (±)",
+    "male_margin_of_error": "Margin of error (±)",
 })
 
 
 def _column_label(column):
-    return _COLUMN_LABELS.get(column, column.replace("_", " ")).capitalize()
+    # Upper-case the first letter only: str.capitalize() would turn "ACS"
+    # into "acs" and "OpenStreetMap" into "Openstreetmap".
+    label = _COLUMN_LABELS.get(column, column.replace("_", " ")).strip()
+    return label[:1].upper() + label[1:]
+
+
+# Query-written labels carry database jargon ("Restaurants (OSM
+# amenity=restaurant)", "Silver Spring CDP"). Say it in words instead.
+_JARGON = [
+    (re.compile(r"\s*\(OSM\s+(?:amenity|shop|leisure|tourism|office|craft)\s*=\s*[\w;|_-]+\)", re.I), " (OpenStreetMap listings)"),
+    (re.compile(r"\bOSM\b"), "OpenStreetMap"),
+    (re.compile(r"\bCDP\b"), "(official Census boundary)"),
+]
+
+
+def _plain_label(text):
+    for pattern, replacement in _JARGON:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 def _display_value(column, value):
@@ -1074,6 +1113,8 @@ def _display_value(column, value):
         if column in {'metric', 'label'}:
             text = re.sub(r'\s*\(foot[- ]traffic proxy\)', '', text, flags=re.I).replace('_', ' ')
             text = ', '.join(reversed(text.split(' > ')))
+        if column in {'metric', 'label', 'measure', 'measure_label'}:
+            text = _plain_label(text)
         return text if len(text) <= 180 else text[:180] + '… (full text below)'
     if _is_percentage(column):
         return f"{value:.1f}%"

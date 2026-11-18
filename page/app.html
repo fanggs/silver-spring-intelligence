@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Ask evidence-backed questions about Silver Spring, Maryland, and see the public data behind every answer.">
     <title>CivicLens — Explore Silver Spring</title>
-    <link rel="stylesheet" href="style.css?v=visible-workspace-1">
+    <link rel="stylesheet" href="style.css?v=answer-places-1">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <!-- Light/dark theme (Aryan): applied before first paint, browser-only. -->
@@ -61,6 +61,16 @@
                         <figcaption id="answerVisualTitle"></figcaption>
                         <ul id="answerVisualItems"></ul>
                     </figure>
+                    <section id="answerPlaces" class="answer-places" hidden aria-labelledby="answerPlacesHeading">
+                        <div class="answer-places-top">
+                            <h3 id="answerPlacesHeading">Places to consider</h3>
+                            <button id="answerPlacesMap" type="button" class="answer-places-map">Show all on map</button>
+                        </div>
+                        <p id="answerPlacesIntro" class="answer-places-intro"></p>
+                        <ul id="answerPlacesList" class="answer-places-list"></ul>
+                        <button id="answerPlacesMore" type="button" class="answer-places-more" hidden></button>
+                        <p class="answer-places-note">From OpenStreetMap, A to Z. Not ranked or endorsed. Hours, websites and phone numbers appear where the listing has them and may be out of date. Capacity and availability are not in this data, so check with each place before planning a visit or event.</p>
+                    </section>
                     <section id="answerAction" class="answer-action" hidden>
                         <h3>Next step</h3>
                         <p id="answerNextStep"></p>
@@ -80,13 +90,8 @@
                             <ul id="sourceList"></ul>
                         </div>
                         <details id="fullResults" class="full-results" hidden>
-                            <summary>Explore all returned fields</summary>
+                            <summary>All returned fields, as stored</summary>
                             <div class="raw-table-wrap"><table id="rawResultsTable"></table></div>
-                        </details>
-                        <details id="listingDetails" class="full-results" hidden>
-                            <summary>Inspect the matching map listings</summary>
-                            <p id="listingRecordsStatus"></p>
-                            <ul id="listingRecords" class="listing-records"></ul>
                         </details>
                     </details>
                 </div>
@@ -120,6 +125,7 @@
                         <div class="map-count-summary">
                             <p id="legendCount" role="status" aria-live="polite">Loading places…</p>
                             <p id="legendScope">All mapped areas</p>
+                            <p id="legendAnswerPlaces" class="legend-answer-places" hidden></p>
                         </div>
                     </aside>
                 </div>
@@ -130,6 +136,7 @@
                             <p><span class="map-key-swatch swatch-tract" aria-hidden="true"></span>Census areas</p>
                             <p><span class="map-key-swatch swatch-highlight" aria-hidden="true"></span>Answer highlights</p>
                             <p><span class="swatch-boundary" aria-hidden="true"></span>Silver Spring boundary</p>
+                            <p><span class="map-ring-swatch" aria-hidden="true"></span>Places in your answer</p>
                         </div>
                         <p>Dots are places recorded in OpenStreetMap. Category counts follow the selected areas, not the current zoom. Listings may be incomplete or out of date.</p>
                         <p>Whole Census areas approximate neighborhoods. Filters change map dots, not your answer.</p>
@@ -142,6 +149,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=map-simple-1"></script>
+    <script src="script.js?v=answer-places-1"></script>
 </body>
 </html>

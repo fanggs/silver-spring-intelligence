@@ -573,3 +573,27 @@ html{scroll-behavior:auto;}
         font-size: 18px;
     }
 }
+
+/* Places to consider: the places an answer is about, linked to rings on the map. */
+.answer-places { margin: 16px 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--white); }
+.answer-places[hidden] { display: none; }
+.answer-places-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
+.answer-places-top h3 { font-size: 15px; font-weight: 700; }
+.answer-places-map, .answer-places-more { padding: 0; border: 0; background: none; color: var(--forest); font: inherit; font-size: 13px; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.answer-places-map[hidden], .answer-places-more[hidden] { display: none; }
+.answer-places-map:focus-visible, .answer-places-more:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; border-radius: 2px; }
+.answer-places-intro { margin-top: 4px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.answer-places-list { list-style: none; margin: 10px 0 0; padding: 0; }
+.answer-places-list li { padding: 9px 0; border-top: 1px solid var(--border); font-size: 14px; overflow-wrap: anywhere; }
+.answer-places-list li:first-child { border-top: 0; }
+.answer-places-list .place-link { font-weight: 700; }
+.answer-place-meta, .answer-place-hours { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.answer-place-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; font-size: 12.5px; }
+.answer-place-links a { color: var(--forest); text-decoration: underline; text-underline-offset: 2px; }
+.answer-places-more { margin-top: 8px; }
+.answer-places-note { margin-top: 12px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.map-ring-swatch { display: inline-block; width: 13px; height: 13px; margin-right: 7px; vertical-align: -2px; border: 2.5px solid var(--ink); border-radius: 50%; box-shadow: 0 0 0 2px var(--white); box-sizing: border-box; }
+.legend-answer-places { margin-top: 6px; font-size: 12.5px; color: var(--ink); }
+.legend-answer-places[hidden] { display: none; }
+.map-area-key .map-ring-swatch { flex: none; margin-right: 0; }
+@media (max-width: 700px) { .legend-answer-places { margin-top: 0; flex-basis: 100%; } }

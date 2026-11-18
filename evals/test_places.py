@@ -193,6 +193,46 @@ class AttachPlacesTests(unittest.TestCase):
         self.assertEqual(main._place_lookup(["https://www.openstreetmap.org/" + ref])[ref]["latitude"], lat)
 
 
+class ListingDetailsTests(unittest.TestCase):
+    """A count's own places, listed and ringed on the map, must be the set counted."""
+
+    @unittest.skipUnless(DB.exists(), "built database not present")
+    def test_labelled_count_lists_exactly_the_places_counted(self):
+        where = ("osm_amenity = 'restaurant' AND geoid IN (SELECT geoid FROM places "
+                 "WHERE LOWER(name) = LOWER('Fenton Village'))")
+        sql = ("SELECT 'Restaurants (OSM amenity=restaurant) in Fenton Village' AS measure, "
+               "COUNT(*) AS listing_count, MIN(source_url) AS source_url FROM businesses WHERE " + where)
+        with closing(sqlite3.connect(DB)) as con:
+            expected = con.execute("SELECT COUNT(*) FROM businesses WHERE " + where).fetchone()[0]
+        details = main._listing_details(sql)
+        self.assertEqual(len(details["rows"]), expected)
+        self.assertFalse(details["truncated"])
+        self.assertTrue(all("website" in row and "opening_hours" in row for row in details["rows"]))
+
+    def test_counts_that_could_list_a_different_set_are_refused(self):
+        for sql in (
+            "SELECT COUNT(DISTINCT name) FROM businesses WHERE osm_shop = 'books'",
+            "SELECT (SELECT COUNT(*) FROM businesses WHERE osm_shop = 'books') AS a",
+            "SELECT category, COUNT(*) FROM businesses WHERE geoid = '1' GROUP BY category",
+            "SELECT COUNT(*) FROM businesses b JOIN places p ON p.geoid = b.geoid WHERE p.name = 'x'",
+            "SELECT COUNT(*) AS a, COUNT(*) AS b FROM businesses WHERE osm_shop = 'books'",
+        ):
+            self.assertIsNone(main._listing_details(sql), sql)
+
+
+class PlainLabelTests(unittest.TestCase):
+    def test_column_labels_keep_acronyms_and_drop_jargon(self):
+        data = main._supporting_data([{
+            "measure": "Female residents by Census sex (not gender identity), Silver Spring CDP",
+            "female_count": 41406, "female_margin_of_error": 1495, "acs_vintage": "ACS 2020-2024"}])
+        self.assertEqual(data["columns"], ["Measure", "Female residents (Census sex)",
+                                           "Margin of error (±)", "Census survey years"])
+        self.assertNotIn("CDP", data["rows"][0][0])
+        restaurants = main._supporting_data([{
+            "measure": "Restaurants (OSM amenity=restaurant) in Fenton Village", "listing_count": 43}])
+        self.assertEqual(restaurants["rows"][0], ["Restaurants (OpenStreetMap listings) in Fenton Village", "43"])
+
+
 class ModelCallTests(unittest.TestCase):
     def fake_client(self, stop_reason, blocks):
         response = SimpleNamespace(stop_reason=stop_reason, content=blocks)
