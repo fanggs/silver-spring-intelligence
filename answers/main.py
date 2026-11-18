@@ -665,6 +665,8 @@ def _answer_question(q: Question):
                                   "support (a number repeated from the question counts too). Rewrite it: use "
                                   "only figures exactly as returned or [[calc: ...]], give each kind's real count "
                                   "instead of 'a', and never say counts suggest foot traffic, demand or interest. "
+                                  "Write it as a fresh answer for the user: never mention a previous answer, a "
+                                  "rewrite, or what you can or cannot see. "
                                   "Your last answer was: " + response)
         if summary is None and last_sections:
             # Both attempts stated at least one figure the database did not
@@ -703,6 +705,7 @@ def _answer_question(q: Question):
     if geography['kind'] == 'census_place':
         highlights, scope = [], 'boundary'
 
+    summary, next_step = _no_meta_sentences(summary), _no_meta_sentences(next_step)
     summary, next_step = _no_tract_words(summary), _no_tract_words(next_step)
     notes = [_no_tract_words(note) for note in notes]
     return {
@@ -729,6 +732,23 @@ def _answer_question(q: Question):
 
 
 # ---------------------------------------------------------------- helpers
+
+# The rewrite step shows the model its own failed draft, and it sometimes
+# answers the correction instead of the user ("My last answer was wrong...",
+# "I can see only the first part"). Those sentences are about us, not the
+# data, so they are dropped. Dropping a sentence never adds a number.
+_META_SENTENCE = re.compile(
+    r"\b(?:my|the|your)\s+(?:last|previous|earlier|first)\s+(?:answer|response|draft)\b"
+    r"|\bI\s+(?:can|could)\s+(?:only\s+)?see\b|\bI\s+(?:am|was)\s+(?:only\s+)?shown\b"
+    r"|\brewrit(?:e|ten|ing)\b",
+    re.I)
+
+
+def _no_meta_sentences(text):
+    if not text:
+        return text
+    kept = [s for s in _split_sentences(text) if not _META_SENTENCE.search(s)]
+    return " ".join(kept) or text
 
 _PLACE_NAME_CACHE = {}
 

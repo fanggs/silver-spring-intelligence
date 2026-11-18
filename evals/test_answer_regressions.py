@@ -132,3 +132,17 @@ class CacheTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class MetaSentenceTests(unittest.TestCase):
+    def test_rewrite_chatter_is_dropped_and_facts_kept(self):
+        from answers import main
+        text = ("There are 157 mapped shop listings for Silver Spring areas. I can see only the first part of "
+                "them here, so please use your table for the full list. My last answer was wrong to say the "
+                "table showed all of them.")
+        self.assertEqual(main._no_meta_sentences(text), "There are 157 mapped shop listings for Silver Spring areas.")
+
+    def test_ordinary_answers_are_untouched(self):
+        from answers import main
+        text = "Fenton Village has 2 mapped bookstore listings. Ask nearby residents where they buy books now."
+        self.assertEqual(main._no_meta_sentences(text), text)
