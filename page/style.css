@@ -491,7 +491,8 @@ html{scroll-behavior:auto;}
     .app-panel-hint { max-width: none; text-align: left; font-size: 11px; }
 }
 
-/* Center the information box over the homepage map */
+
+/* Minimal editorial map caption */
 
 #heroVisual {
     position: relative;
@@ -499,14 +500,59 @@ html{scroll-behavior:auto;}
 
 #heroVisual .hero-caption {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    bottom: auto;
+    top: 3%;
+    left: 5%;
     right: auto;
-    transform: translate(-50%, -50%);
+    bottom: auto;
+    transform: none;
     z-index: 2;
 
     width: max-content;
-    max-width: calc(100% - 32px);
-    text-align: center;
+    max-width: 75%;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+
+    text-align: left;
 }
+
+/* Location label */
+#heroVisual .hero-caption p {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin: 0 0 5px;
+}
+
+/* Main heading */
+#heroVisual .hero-caption strong {
+    display: block;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+/* Supporting text */
+#heroVisual .hero-caption span {
+    display: block;
+    font-size: 12px;
+    line-height: 1.5;
+    opacity: 0.75;
+}
+
+/* Mobile adjustments */
+@media (max-width: 600px) {
+    #heroVisual .hero-caption {
+        top: 2%;
+        left: 5%;
+        max-width: 85%;
+    }
+
+    #heroVisual .hero-caption strong {
+        font-size: 17px;
+    }
+}
+
