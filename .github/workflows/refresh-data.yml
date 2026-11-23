@@ -39,7 +39,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install
-        run: pip install -r answers/requirements.txt -r get_data/requirements-community.txt requests
+        run: pip install -r answers/requirements.txt -r get_data/requirements.txt -r get_data/requirements-community.txt
 
       - name: Refresh data
         id: refresh

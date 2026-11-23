@@ -65,7 +65,7 @@ commercial viability, venue availability, or a precise unprovided district bound
 Install build dependencies:
 
 ```bash
-pip install requests pyshp -r get_data/requirements-community.txt
+pip install -r get_data/requirements.txt -r get_data/requirements-community.txt
 ```
 
 Add the bundled partner snapshot to an existing primary snapshot safely:
