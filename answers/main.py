@@ -33,7 +33,7 @@ from pydantic import BaseModel
 
 from answers.schema import SCHEMA_DESCRIPTION, COVERAGE_BLURB
 from answers.sql_guard import run, UnsafeQuery
-from answers.community_context import catalog, schema_context, used_sources, notes as community_notes
+from answers.community_context import CRIME_GROUPS, catalog, crime_group, schema_context, used_sources, notes as community_notes
 from answers import demographic_context
 from answers.response_cache import AnswerCache
 
@@ -1614,6 +1614,9 @@ def _answer_notes(sql, rows, question):
         notes.append("OpenStreetMap listings may be incomplete or out of date.")
     if re.search(r'foot[- ]traffic|demand|proxy', json.dumps(rows), re.I) and 'businesses' in query:
         notes.append('Business listing counts do not measure foot traffic or customer demand.')
+    group = crime_group(sql)
+    if group:
+        notes.append(CRIME_GROUPS[group]["note"])
     return list(dict.fromkeys(notes + community_notes(DATABASE_PATH, sql)))
 
 
