@@ -125,13 +125,12 @@ button,input{font:inherit;}
 .app-banner.is-live{background:#e4eee5;color:#27623c;}
 .app-question-form{margin-bottom:24px;}
 .app-question-form > label{display:block;margin-bottom:9px;font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;}
-.app-question-row{display:flex;gap:10px;max-width:1130px;}
-.app-question-row input{flex:1;min-width:0;height:60px;padding:0 18px;border:1px solid var(--border);border-radius:13px;background:var(--white);color:var(--ink);font-size:16px;}
-.app-question-row button{min-width:126px;padding:0 22px;border:0;border-radius:13px;background:var(--forest);color:var(--white);font-weight:800;cursor:pointer;}
+.app-question-row{display:flex;align-items:flex-end;gap:10px;max-width:1130px;}
+.app-question-row textarea{flex:1;min-width:0;height:60px;max-height:180px;padding:17px 18px;line-height:24px;resize:none;overflow-y:hidden;font-family:inherit;border:1px solid var(--border);border-radius:13px;background:var(--white);color:var(--ink);font-size:16px;}
+.app-question-row button{height:60px;min-width:126px;padding:0 22px;border:0;border-radius:13px;background:var(--forest);color:var(--white);font-weight:800;cursor:pointer;}
 .app-question-row button:hover{background:var(--forest-light);}
 .app-question-row button:disabled{opacity:.6;cursor:wait;}
 .app-question-row button span{margin-left:14px;}
-.app-question-hint{margin-top:8px;color:var(--muted);font-size:12px;}
 .app-columns{display:grid;grid-template-columns:minmax(340px,.8fr) minmax(0,1.3fr);grid-template-areas:"answer map";gap:18px;align-items:start;}
 .app-map-panel{grid-area:map;}
 .app-answer-panel{grid-area:answer;}
@@ -473,8 +472,8 @@ html{scroll-behavior:auto;}
     .app-header { gap: 14px; }
     .app-map-panel, .app-answer-panel { padding: 16px; }
     .app-intro h1 { font-size: clamp(32px, 8vw, 44px); }
-    .app-question-row input { height: 52px; font-size: 16px; padding: 0 12px; }
-    .app-question-row button { padding: 0 12px; min-width: 70px; }
+    .app-question-row textarea { height: 52px; font-size: 16px; padding: 13px 12px; }
+    .app-question-row button { height: 52px; padding: 0 12px; min-width: 70px; }
     .app-question-row button span { margin-left: 4px; }
     .question-examples { grid-template-columns: minmax(0, 1fr); }
     .question-examples button { min-height: 44px; }
@@ -606,3 +605,8 @@ html{scroll-behavior:auto;}
 .answer-feedback{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--border);color:var(--muted);font-size:14px;}
 .answer-feedback a{color:inherit;font-weight:700;text-decoration:underline;text-underline-offset:3px;}
 @media (max-width:760px){.feedback-link{padding:10px 12px;}}
+
+/* Places list starts closed so long answers stay short (Arwa, Nov 18). */
+.answer-places-body[hidden] { display: none; }
+#answerPlacesToggle { margin-top: 8px; }
+#answerPlacesToggle[hidden] { display: none; }

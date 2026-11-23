@@ -81,7 +81,8 @@
     background: #436d52;
 }
 
-[data-theme="dark"] input::placeholder {
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
     color: var(--muted);
     opacity: 1;
 }

@@ -427,6 +427,16 @@ function initAppPage() {
         more.setAttribute("aria-expanded", String(expanded));
     }
 
+    // Lists this short are shown straight away; longer ones start closed.
+    const PLACES_OPEN_UP_TO = 3;
+
+    function setAnswerPlacesOpen(open) {
+        const toggle = element("answerPlacesToggle");
+        element("answerPlacesBody").hidden = !open;
+        toggle.setAttribute("aria-expanded", String(open));
+        toggle.textContent = open ? "Hide the list" : `Show the ${answerPlaceList.length.toLocaleString()} places`;
+    }
+
     function renderAnswerPlaces(payload) {
         const section = element("answerPlaces");
         const { places } = answerPlaces(payload);
@@ -441,10 +451,13 @@ function initAppPage() {
         if (section.hidden) return;
         const single = answerPlaceList.length === 1;
         element("answerPlacesMap").textContent = single ? "Show on map" : "Show all on map";
+        const openNow = answerPlaceList.length <= PLACES_OPEN_UP_TO;
         element("answerPlacesIntro").textContent = single
             ? "Ringed on the map. Click the name to zoom to it."
-            : `The ${answerPlaceList.length.toLocaleString()} mapped places behind this answer, ringed on the map. Click a name to zoom to it.`;
+            : `The ${answerPlaceList.length.toLocaleString()} mapped places behind this answer are ringed on the map. Click a name in the list to zoom to it.`;
+        element("answerPlacesToggle").hidden = openNow;
         showAnswerPlaces(false);
+        setAnswerPlacesOpen(openNow);
     }
 
     // Rings around the answer's places, drawn over the category dots so the
@@ -1395,9 +1408,29 @@ function initAppPage() {
             : "";
     }
 
+    // The question box grows with what's typed (up to its max height), so a
+    // long question stays readable. Enter asks; Shift+Enter adds a line.
+    function fitQuestionBox() {
+        const box = ui.question;
+        box.style.height = "auto";
+        const max = parseFloat(getComputedStyle(box).maxHeight) || Infinity;
+        const height = Math.min(box.scrollHeight + 2, max);
+        box.style.height = `${height}px`;
+        box.style.overflowY = box.scrollHeight + 2 > max ? "auto" : "hidden";
+    }
+    ui.question.addEventListener("input", fitQuestionBox);
+    window.addEventListener("resize", fitQuestionBox);
+    ui.question.addEventListener("keydown", event => {
+        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+            event.preventDefault();
+            ui.form.requestSubmit();
+        }
+    });
+
     document.querySelectorAll("[data-question]").forEach(button => {
         button.addEventListener("click", () => {
             ui.question.value = button.dataset.question;
+            fitQuestionBox();
             ui.question.focus();
         });
     });
@@ -1446,6 +1479,9 @@ function initAppPage() {
         }
     });
 
+    element("answerPlacesToggle").addEventListener("click", event => {
+        setAnswerPlacesOpen(event.currentTarget.getAttribute("aria-expanded") !== "true");
+    });
     element("answerPlacesMore").addEventListener("click", event => {
         showAnswerPlaces(event.currentTarget.getAttribute("aria-expanded") !== "true");
     });
