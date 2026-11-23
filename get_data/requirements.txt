@@ -1,0 +1,4 @@
+# Needed to fetch and rebuild data (get_data/*). The API itself only needs
+# answers/requirements.txt.
+requests
+pyshp>=3  # imported as `shapefile`; reads Census tract boundaries
