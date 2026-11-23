@@ -5,31 +5,6 @@ const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 const API_BASE_URL = isLocal ? "http://127.0.0.1:8000" : "https://civiclens-api-ack0.onrender.com";
 const SCOPE_MESSAGE = "I can't answer that from the data I have. I can tell you about population, languages spoken at home, household income, foreign-born residents, housing, commuting and local businesses for Silver Spring, Maryland and its neighborhoods, how those have changed since 2016, and how Silver Spring compares with the rest of Montgomery County.";
 
-function initLandingPage() {
-    const heroVisual = document.getElementById("heroVisual");
-    const locationCard = document.getElementById("locationCard");
-
-    if (heroVisual && locationCard && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        heroVisual.addEventListener("mousemove", (event) => {
-            const box = heroVisual.getBoundingClientRect();
-            const x = (event.clientX - box.left) / box.width;
-            const y = (event.clientY - box.top) / box.height;
-            locationCard.style.transform = `translate(${x * 8}px, ${y * 8}px)`;
-        });
-
-        heroVisual.addEventListener("mouseleave", () => {
-            locationCard.style.transform = "translate(0, 0)";
-        });
-    }
-
-    document.querySelectorAll(".nav-links a[href^='#']").forEach((link) => {
-        link.addEventListener("click", () => {
-            document.querySelectorAll(".nav-links a").forEach((item) => item.classList.remove("active"));
-            link.classList.add("active");
-        });
-    });
-}
-
 function initAppPage() {
     const element = (id) => document.getElementById(id);
 
@@ -1490,8 +1465,4 @@ function initAppPage() {
     });
 }
 
-if (document.getElementById("askForm")) {
-    initAppPage();
-} else {
-    initLandingPage();
-}
+initAppPage();
