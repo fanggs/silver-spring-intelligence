@@ -67,10 +67,14 @@ def connect(path):
 
 
 def catalog(path):
+    """Every registered source table: the partner/county community tables and
+    the context tables added by get_data.fetch_insights (same columns)."""
+    out = []
     with closing(connect(path)) as con:
-        if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='community_sources'").fetchone():
-            return []
-        return [dict(r) for r in con.execute('SELECT * FROM community_sources ORDER BY source_id')]
+        for registry in ('community_sources', 'insight_sources'):
+            if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (registry,)).fetchone():
+                out += [dict(r) for r in con.execute(f'SELECT * FROM {registry} ORDER BY source_id')]
+    return out
 
 
 def schema_context(path):
@@ -81,13 +85,16 @@ def schema_context(path):
     with closing(connect(path)) as con:
         for source in registered:
             table = source['table_name']
-            if not re.fullmatch(r'community_[a-z_]+',table):
+            if not re.fullmatch(r'(?:community|county)_[a-z_]+|acs_measures|jobs_by_tract|business_patterns', table):
+                continue
+            if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
                 continue
             columns = [(r['name'],r['type']) for r in con.execute('PRAGMA table_info("'+table+'")')]
             parts.append('TABLE '+table+' ('+', '.join(k+' '+t for k,t in columns)+')')
             parts.append(source['label']+': '+source['coverage_note'])
             parts.append('Coverage: '+source['geography']+'. Source retrieval date: '+str(source['retrieved_at'] or 'unknown')+'. Data vintage: '+str(source['data_vintage'] or 'unknown')+'. Import time is NOT a source date.')
-            for key in ('category','land_use'):
+            for key in ('category', 'land_use', 'usecode', 'worktype', 'report_type', 'person_type',
+                        'injury_severity', 'bedroom_type', 'business_type', 'license_type', 'district', 'light'):
                 if key in {k for k,_ in columns}:
                     values = [r[0] for r in con.execute(f'SELECT "{key}" FROM "{table}" WHERE "{key}" IS NOT NULL GROUP BY "{key}" ORDER BY COUNT(*) DESC LIMIT 12')]
                     parts.append(key+' examples (not an exhaustive list): '+json.dumps(values))
@@ -147,8 +154,14 @@ def used_sources(path, sql):
 
 
 def notes(path, sql):
+    from answers.insight_context import SHORT_NOTES
     out=[]
     for source in used_sources(path, sql):
+        if source['table_name'] in SHORT_NOTES:
+            out.append(SHORT_NOTES[source['table_name']])
+            if source['table_name'].startswith('county_') and re.search(r'\bplaces\b', sql or ''):
+                out.append('Records are placed in Census areas by their location. Named district totals use whole Census areas, so they are approximate, not a precise district boundary.')
+            continue
         out.append(source['label']+': '+source['coverage_note'])
         if not source['retrieved_at'] or not source['data_vintage']:
             out.append('The partner snapshot has no confirmed source retrieval date or data vintage; record dates and import time are different.')

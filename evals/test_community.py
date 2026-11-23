@@ -34,6 +34,11 @@ class CommunityTests(unittest.TestCase):
             from get_data.refresh_county import DATASETS as REFRESHED
             for row in catalog(DB):
                 self.assertTrue(row['source_sha256'])
+                if not row['table_name'].startswith('community_'):
+                    # Context tables from get_data.fetch_insights always come
+                    # straight from the publisher, with both dates.
+                    self.assertTrue(row['retrieved_at'] and row['data_vintage'])
+                    continue
                 if row['retrieved_at']:
                     self.assertIn(row['source_id'], REFRESHED)
                     self.assertTrue(row['data_vintage'])

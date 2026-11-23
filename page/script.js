@@ -196,6 +196,7 @@ function initAppPage() {
         if (focusMarker && map) { map.removeLayer(focusMarker); focusMarker = null; }
         renderVisual(payload?.visual);
         renderSupportingData(payload);
+        renderEvidence(payload);
         renderAnswerPlaces(payload);
         renderStatistic(payload);
         ui.sources.replaceChildren();
@@ -234,6 +235,50 @@ function initAppPage() {
         if (FIELD_LABELS[key]) return FIELD_LABELS[key];
         const text = String(key).replace(/_margin_of_error$/, " margin of error (±)").replaceAll("_", " ").replace(/\bpct\b/g, "%");
         return text.charAt(0).toUpperCase() + text.slice(1);
+    }
+
+    // Other queries an answer drew on (residents, jobs, a county benchmark...),
+    // each as its own small table, so every figure in the answer has a row.
+    function renderEvidence(payload) {
+        const box = document.getElementById("answerEvidence");
+        if (!box) return;
+        box.replaceChildren();
+        const items = Array.isArray(payload?.evidence) ? payload.evidence : [];
+        box.hidden = !items.length;
+        items.forEach((item) => {
+            const columns = Array.isArray(item?.supporting_data?.columns) ? item.supporting_data.columns : [];
+            const rows = Array.isArray(item?.supporting_data?.rows) ? item.supporting_data.rows : [];
+            if (!columns.length || !rows.length) return;
+            const section = document.createElement("section");
+            const heading = document.createElement("h3");
+            heading.textContent = String(item.label || "Supporting evidence");
+            const wrap = document.createElement("div");
+            wrap.className = "app-table-wrap";
+            const table = document.createElement("table");
+            const head = document.createElement("thead");
+            const headRow = document.createElement("tr");
+            columns.forEach((column) => {
+                const th = document.createElement("th");
+                th.scope = "col";
+                th.textContent = String(column);
+                headRow.append(th);
+            });
+            head.append(headRow);
+            const body = document.createElement("tbody");
+            rows.slice(0, 50).forEach((values) => {
+                const tr = document.createElement("tr");
+                (Array.isArray(values) ? values : []).forEach((value) => {
+                    const td = document.createElement("td");
+                    td.textContent = value == null ? "Not available" : String(value);
+                    tr.append(td);
+                });
+                body.append(tr);
+            });
+            table.append(head, body);
+            wrap.append(table);
+            section.append(heading, wrap);
+            box.append(section);
+        });
     }
 
     function renderSupportingData(payload) {
