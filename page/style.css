@@ -597,3 +597,12 @@ html{scroll-behavior:auto;}
 .legend-answer-places[hidden] { display: none; }
 .map-area-key .map-ring-swatch { flex: none; margin-right: 0; }
 @media (max-width: 700px) { .legend-answer-places { margin-top: 0; flex-basis: 100%; } }
+
+/* Beta feedback form (Google Form, opens in a new tab). */
+.feedback-link{min-height:44px;padding:10px 14px;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--forest-light);border-radius:100px;color:var(--forest-light);font-size:12px;font-weight:700;white-space:nowrap;text-decoration:none;}
+.feedback-link:hover{background:var(--forest-light);color:var(--white);}
+[data-theme="dark"] .feedback-link{border-color:var(--lime);color:var(--lime);}
+[data-theme="dark"] .feedback-link:hover{background:var(--lime);color:#152019;}
+.answer-feedback{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--border);color:var(--muted);font-size:14px;}
+.answer-feedback a{color:inherit;font-weight:700;text-decoration:underline;text-underline-offset:3px;}
+@media (max-width:760px){.feedback-link{padding:10px 12px;}}
