@@ -38,9 +38,19 @@ TABLE businesses  -- named OpenStreetMap listings, including businesses and amen
   business_id    TEXT
   name           TEXT
   category       TEXT, e.g. 'restaurant', 'fast food', 'cafe', 'bar', 'pub', 'books'
-  category_group TEXT, e.g. 'food and drink', 'retail', 'other amenity'
+  category_group TEXT: 'food and drink', 'retail', 'other amenity', 'recreation and fitness',
+                 'lodging and attractions', 'office', 'trades and crafts'
   osm_amenity    TEXT, original OSM amenity tag, e.g. 'restaurant' or 'fast_food'
   osm_shop       TEXT, original OSM shop tag, e.g. 'books' for bookstores
+  osm_leisure    TEXT, e.g. 'fitness_centre' (gyms), 'sports_centre', 'dance', 'bowling_alley'
+  osm_tourism    TEXT, e.g. 'hotel', 'motel', 'museum', 'gallery'
+  osm_office     TEXT, e.g. 'company', 'lawyer', 'estate_agent', 'government', 'ngo', 'coworking'
+  osm_craft      TEXT, e.g. 'brewery', 'caterer', 'tailor', 'electrician'
+  Exactly one osm_* type column is set per listing; category is that value with spaces.
+  OpenStreetMap tags one kind of place several ways (a dance studio may be leisure='dance' or
+  amenity='dancing_school'; a gym leisure='fitness_centre' or 'sports_centre'). When looking for a
+  kind of place, match category with LIKE on its stem (category LIKE '%danc%') rather than one
+  tag value, and say which categories were counted.
   duplicate_source_url TEXT, alternate OSM record when a matching node and area were merged
   address        TEXT
   latitude       REAL
