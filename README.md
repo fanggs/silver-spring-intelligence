@@ -93,7 +93,7 @@ In a second terminal from the same directory, start the webpage:
 .venv/bin/python -m http.server 5500 --bind 127.0.0.1 --directory page
 ```
 
-Open [the local map](http://127.0.0.1:5500/app.html). It uses the local API
+Open [the local map](http://127.0.0.1:5500/). It uses the local API
 and SQLite snapshot. The public page uses the deployed Render API.
 
 For a database check that needs no model call, run

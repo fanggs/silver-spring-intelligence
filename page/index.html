@@ -3,177 +3,151 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="CivicLens turns scattered public information into a map people can question and verify.">
-    <title>CivicLens — Silver Spring Community Intelligence</title>
-    <link rel="stylesheet" href="style.css?v=places-theme-1">
+    <meta name="description" content="Ask evidence-backed questions about Silver Spring, Maryland, and see the public data behind every answer.">
+    <title>CivicLens — Explore Silver Spring</title>
+    <link rel="stylesheet" href="style.css?v=answer-places-1">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <!-- Light/dark theme (Aryan): applied before first paint, browser-only. -->
     <script src="theme.js?v=places-theme-1"></script>
-    <link rel="stylesheet" href="theme.css?v=map-outline-1">
+    <link rel="stylesheet" href="theme.css?v=map-simple-1">
 </head>
-<body>
-    <header class="navbar" id="siteHeader">
-        <a href="#home" class="brand">Civic<span>Lens</span><i>✦</i></a>
-        <p class="location">SILVER SPRING, MARYLAND</p>
-        <nav class="nav-links">
-            <a href="#home">Home</a>
-            <a href="app.html">Explore</a>
-            <a href="#about">About</a>
-            <a href="#sources">Sources</a>
-        </nav>
+<body class="app-page">
+    <header class="app-header">
+        <a class="brand" href="./" aria-label="CivicLens">Civic<span>Lens</span><i>✦</i></a>
+        <p>COMMUNITY INTELLIGENCE / SILVER SPRING, MD</p>
         <div class="header-actions">
-            <button
-                class="theme-toggle"
-                type="button"
-                aria-label="Switch to dark mode"
-                hidden
-            >Dark mode</button>
-            <a href="app.html" class="nav-button">Try CivicLens <span>↗</span></a>
+            <button class="theme-toggle" type="button" aria-label="Switch to dark mode" hidden>Dark mode</button>
         </div>
     </header>
 
-    <main>
-        <section class="hero" id="home">
-            <div class="hero-content">
-                <p class="eyebrow">COMMUNITY INTELLIGENCE <span></span> SILVER SPRING</p>
-                <h1>Know your <em>neighborhood.</em></h1>
-                <p class="hero-description">
-                    Public information about a place should be easy to see,
-                    understand, question, and verify.
-                </p>
-                <a href="app.html" class="hero-button">Try CivicLens <span>↗</span></a>
+    <main class="app-shell">
+        <div class="app-intro">
+            <div>
+                <p class="section-label">EXPLORE / SILVER SPRING</p>
+                <h1>Ask about a place. <em>See the evidence.</em></h1>
+                <p>Ask about Silver Spring or a neighborhood by name. Map highlights use whole census tracts to approximate neighborhoods. Published Silver Spring population estimates use the official Census boundary.</p>
             </div>
+        </div>
 
-            <div class="hero-visual" id="heroVisual">
-                <img class="hero-map-light" src="hero-map.svg?v=clean-map-1" alt="Map of Silver Spring showing the Census place outline, surrounding tracts, and mapped listings" width="720" height="560">
-                <img class="hero-map-dark" src="hero-map-dark.svg?v=outline-1" alt="Map of Silver Spring showing the Census place outline, surrounding tracts, and mapped listings" width="720" height="560">
-                <div class="hero-caption">
-                    <p>SILVER SPRING, MARYLAND</p>
-                    <strong>Explore Silver Spring</strong>
-                    <span>Census boundaries and OpenStreetMap listings</span>
+        <div id="modeBanner" class="app-banner" role="status" aria-live="polite" hidden></div>
+
+        <form id="askForm" class="app-question-form">
+            <label for="questionInput">Ask CivicLens a question</label>
+            <div class="app-question-row">
+                <input id="questionInput" type="text" name="question" maxlength="500" required
+                       placeholder="What would you like to know about Silver Spring?" autocomplete="off">
+                <button id="askButton" type="submit">Ask <span aria-hidden="true">↗</span></button>
+            </div>
+            <p class="app-question-hint">Every answer comes from public data, with the source behind it.</p>
+
+        </form>
+
+        <div class="app-columns">
+            <section class="app-answer-panel" aria-labelledby="answerHeading">
+                <div class="app-panel-top">
+                    <h2 id="answerHeading">What the data says</h2>
                 </div>
-            </div>
-        </section>
-
-        <section class="promise-strip">
-            <p><span>01</span> ASK NATURALLY</p>
-            <p><span>02</span> SEE THE PLACE</p>
-            <p><span>03</span> VERIFY THE SOURCE</p>
-        </section>
-
-        <section class="mission-section" id="about">
-            <div class="mission-label">
-                <p>01 / WHY CIVICLENS</p>
-            </div>
-            <div class="mission-main">
-                <h2>Public data is everywhere. <em>Understanding it shouldn't be.</em></h2>
-                <div class="mission-bottom">
-                    <p class="mission-description">
-                        Census records, geographic systems, planning information,
-                        and local place data often live across different platforms.
-                        CivicLens brings those pieces into one understandable interface.
-                    </p>
-                    <div class="source-stack">
-                        <div class="source-card">
-                            <span>01</span>
-                            <strong>Demographics</strong>
-                            <p>Census and community data</p>
-                        </div>
-                        <div class="source-card">
-                            <span>02</span>
-                            <strong>Geography</strong>
-                            <p>Boundaries and place context</p>
-                        </div>
-                        <div class="source-card">
-                            <span>03</span>
-                            <strong>Local activity</strong>
-                            <p>Businesses and nearby places</p>
-                        </div>
+                <p id="answerState" class="answer-state" role="status">Ask a question to see a source-backed answer.</p>
+                <div id="answerLoading" class="answer-loading" hidden aria-hidden="true"><span></span></div>
+                <div id="answerResult" hidden>
+                    <p id="answerText" class="app-answer-text" aria-live="polite"></p>
+                    <div id="answerStatistic" class="answer-statistic" hidden>
+                        <strong id="statisticValue"></strong>
+                        <span id="statisticLabel"></span>
                     </div>
+                    <figure id="answerVisual" class="answer-visual" hidden>
+                        <figcaption id="answerVisualTitle"></figcaption>
+                        <ul id="answerVisualItems"></ul>
+                    </figure>
+                    <section id="answerPlaces" class="answer-places" hidden aria-labelledby="answerPlacesHeading">
+                        <div class="answer-places-top">
+                            <h3 id="answerPlacesHeading">Places in this answer</h3>
+                            <button id="answerPlacesMap" type="button" class="answer-places-map">Show all on map</button>
+                        </div>
+                        <p id="answerPlacesIntro" class="answer-places-intro"></p>
+                        <ul id="answerPlacesList" class="answer-places-list"></ul>
+                        <button id="answerPlacesMore" type="button" class="answer-places-more" hidden></button>
+                        <p class="answer-places-note">From OpenStreetMap, A to Z. Not ranked or endorsed. Hours, websites and phone numbers appear where the listing has them and may be out of date. Capacity and availability are not in this data, so check with each place before planning a visit or event.</p>
+                    </section>
+                    <section id="answerAction" class="answer-action" hidden>
+                        <h3>Next step</h3>
+                        <p id="answerNextStep"></p>
+                    </section>
+                    <p id="answerNotes" class="app-answer-notes" hidden></p>
+                    <details id="answerDetails" class="answer-details">
+                        <summary>See supporting data and sources</summary>
+                        <p id="methodologyNotes" class="app-answer-notes"></p>
+                        <div class="app-table-wrap">
+                            <table id="supportTable" aria-label="Supporting data">
+                                <thead><tr id="supportHeads"></tr></thead>
+                                <tbody id="supportRows"></tbody>
+                            </table>
+                        </div>
+                        <div id="sources" class="app-sources">
+                            <h3>Sources</h3>
+                            <ul id="sourceList"></ul>
+                        </div>
+                        <details id="fullResults" class="full-results" hidden>
+                            <summary>All returned fields, as stored</summary>
+                            <div class="raw-table-wrap"><table id="rawResultsTable"></table></div>
+                        </details>
+                    </details>
                 </div>
+            <div class="question-examples" aria-label="Example questions">
+                <span>Try a question</span>
+                <button type="button" data-question="Should I open a bookstore in Fenton Village?">Should I open a bookstore in Fenton Village? <span aria-hidden="true">↗</span></button>
+                <button type="button" data-question="How many restaurants are in Fenton Village?">How many restaurants are in Fenton Village? <span aria-hidden="true">↗</span></button>
+                <button type="button" data-question="We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here?">We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here? <span aria-hidden="true">↗</span></button>
+                <button type="button" data-question="How many people who identify as female live in Silver Spring?">How many people who identify as female live in Silver Spring? <span aria-hidden="true">↗</span></button>
             </div>
-        </section>
+            </section>
 
-        <section class="insight-section">
-            <div class="insight-heading">
-                <p class="section-label">WHAT CAN CIVICLENS SHOW?</p>
-                <p class="insight-number">02</p>
-            </div>
+            <section class="app-map-panel" aria-labelledby="mapHeading">
+                <div class="app-panel-top">
+                    <div><p class="section-label">01 / THE PLACE</p><h2 id="mapHeading">Explore the map</h2></div>
+                    <p class="app-panel-hint">Click a dot for details or an area to select it.</p>
+                </div>
+                <div class="map-workspace">
+                    <div class="map-viewport">
+                        <div class="app-map-wrap">
+                            <div id="map" aria-label="Map of Silver Spring, Maryland"></div>
+                            <p id="mapFallback" class="app-map-fallback" hidden>Map library could not load. Check your internet connection and refresh.</p>
+                        </div>
+                        <p id="layerStatus" class="map-layer-status" role="status" aria-live="polite">Loading map layers…</p>
+                    </div>
+                    <aside id="mapLegend" class="map-legend" aria-labelledby="mapLegendHeading">
+                        <h3 id="mapLegendHeading">Show on map</h3>
+                        <p class="map-legend-intro">Uncheck a category to hide it.</p>
+                        <label class="map-select-all"><input id="allMapCategories" type="checkbox" checked><span>All categories</span></label>
+                        <div id="legendCategories" class="legend-categories" role="group" aria-label="Show or hide map categories"></div>
+                        <div class="map-count-summary">
+                            <p id="legendCount" role="status" aria-live="polite">Loading places…</p>
+                            <p id="legendScope">All mapped areas</p>
+                            <p id="legendAnswerPlaces" class="legend-answer-places" hidden></p>
+                        </div>
+                    </aside>
+                </div>
+                <details class="map-guide">
+                    <summary>Map key &amp; data notes</summary>
+                    <div class="map-guide-content">
+                        <div class="map-area-key">
+                            <p><span class="map-key-swatch swatch-tract" aria-hidden="true"></span>Census areas</p>
+                            <p><span class="map-key-swatch swatch-highlight" aria-hidden="true"></span>Answer highlights</p>
+                            <p><span class="swatch-boundary" aria-hidden="true"></span>Silver Spring boundary</p>
+                            <p><span class="map-ring-swatch" aria-hidden="true"></span>Places in your answer</p>
+                        </div>
+                        <p>Dots are places recorded in OpenStreetMap. Category counts follow the selected areas, not the current zoom. Listings may be incomplete or out of date.</p>
+                        <p>Whole Census areas approximate neighborhoods. Filters change map dots, not your answer.</p>
+                    </div>
+                </details>
+            </section>
 
-            <div class="data-grid">
-                <article class="data-card card-wide">
-                    <div class="card-top">
-                        <span>01</span>
-                        <p>DEMOGRAPHICS</p>
-                    </div>
-                    <div class="card-content">
-                        <h3>Who lives <em>here?</em></h3>
-                        <p>Explore population, age, household income, and other community characteristics.</p>
-                    </div>
-                    <div class="card-graphic demographic-graphic" aria-hidden="true">
-                        <div class="bar bar-one"></div>
-                        <div class="bar bar-two"></div>
-                        <div class="bar bar-three"></div>
-                        <div class="bar bar-four"></div>
-                        <div class="bar bar-five"></div>
-                    </div>
-                </article>
-
-                <article class="data-card card-dark">
-                    <div class="card-top">
-                        <span>02</span>
-                        <p>LOCAL PLACES</p>
-                    </div>
-                    <div class="business-graphic">
-                        <span class="business-dot business-one"></span>
-                        <span class="business-dot business-two"></span>
-                        <span class="business-dot business-three"></span>
-                        <span class="business-dot business-four"></span>
-                    </div>
-                    <div class="card-content">
-                        <h3>What's nearby?</h3>
-                        <p>See public place and business information geographically.</p>
-                    </div>
-                </article>
-
-                <article class="data-card card-soft">
-                    <div class="card-top">
-                        <span>03</span>
-                        <p>PATTERNS</p>
-                    </div>
-                    <div class="pattern-graphic">
-                        <div class="pattern-line line-one"></div>
-                        <div class="pattern-line line-two"></div>
-                        <div class="pattern-line line-three"></div>
-                    </div>
-                    <div class="card-content">
-                        <h3>What's changing?</h3>
-                        <p>Compare places and make community patterns easier to see.</p>
-                    </div>
-                </article>
-
-                <article class="data-card card-lime">
-                    <div class="card-top">
-                        <span>04</span>
-                        <p>EVIDENCE</p>
-                    </div>
-                    <div class="evidence-symbol">↳</div>
-                    <div class="card-content">
-                        <h3>How do we know?</h3>
-                        <p>Trace answers back to the public source, geography, and calculation behind them.</p>
-                    </div>
-                </article>
-            </div>
-        </section>
-
-        <section class="landing-sources" id="sources">
-            <p class="section-label">SOURCES / EVIDENCE</p>
-            <h2>See where every answer comes from.</h2>
-            <p>
-                The CivicLens app places clickable source links directly under each answer.
-                Ask a question to see the source information returned by the live data server.
-            </p>
-        </section>
+        </div>
     </main>
 
-    <script src="script.js?v=area-names-1"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="script.js?v=open-on-tool-1"></script>
 </body>
 </html>
