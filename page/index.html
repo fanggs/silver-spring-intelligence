@@ -5,19 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Ask evidence-backed questions about Silver Spring, Maryland, and see the public data behind every answer.">
     <title>CivicLens — Explore Silver Spring</title>
-    <link rel="stylesheet" href="style.css?v=feedback-1">
+    <link rel="stylesheet" href="style.css?v=arwa-fixes-1">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <!-- Light/dark theme (Aryan): applied before first paint, browser-only. -->
     <script src="theme.js?v=places-theme-1"></script>
-    <link rel="stylesheet" href="theme.css?v=map-simple-1">
+    <link rel="stylesheet" href="theme.css?v=arwa-fixes-1">
 </head>
 <body class="app-page">
     <header class="app-header">
         <a class="brand" href="./" aria-label="CivicLens">Civic<span>Lens</span><i>✦</i></a>
         <p>COMMUNITY INTELLIGENCE / SILVER SPRING, MD</p>
         <div class="header-actions">
-            <a class="feedback-link" href="https://docs.google.com/forms/d/e/1FAIpQLSe8izhY40wmvSQeN9AdVEj1FF-L1GhsGxq2x3kI-ZofCc-UVQ/viewform" target="_blank" rel="noopener">Give feedback <span aria-hidden="true">↗</span></a>
+            <a class="feedback-link" href="https://docs.google.com/forms/d/e/1FAIpQLSe8izhY40wmvSQeN9AdVEj1FF-L1GhsGxq2x3kI-ZofCc-UVQ/viewform" target="_blank" rel="noopener">Give feedback <span aria-hidden="true">&#x2197;&#xFE0E;</span></a>
             <button class="theme-toggle" type="button" aria-label="Switch to dark mode" hidden>Dark mode</button>
         </div>
     </header>
@@ -36,11 +36,10 @@
         <form id="askForm" class="app-question-form">
             <label for="questionInput">Ask CivicLens a question</label>
             <div class="app-question-row">
-                <input id="questionInput" type="text" name="question" maxlength="500" required
-                       placeholder="What would you like to know about Silver Spring?" autocomplete="off">
-                <button id="askButton" type="submit">Ask <span aria-hidden="true">↗</span></button>
+                <textarea id="questionInput" name="question" rows="1" maxlength="500" required
+                          placeholder="Ask about Silver Spring" autocomplete="off" enterkeyhint="send"></textarea>
+                <button id="askButton" type="submit">Ask <span aria-hidden="true">&#x2197;&#xFE0E;</span></button>
             </div>
-            <p class="app-question-hint">Every answer comes from public data, with the source behind it.</p>
 
         </form>
 
@@ -67,9 +66,12 @@
                             <button id="answerPlacesMap" type="button" class="answer-places-map">Show all on map</button>
                         </div>
                         <p id="answerPlacesIntro" class="answer-places-intro"></p>
+                        <button id="answerPlacesToggle" type="button" class="answer-places-more" aria-expanded="false" aria-controls="answerPlacesBody"></button>
+                        <div id="answerPlacesBody" class="answer-places-body" hidden>
                         <ul id="answerPlacesList" class="answer-places-list"></ul>
                         <button id="answerPlacesMore" type="button" class="answer-places-more" hidden></button>
                         <p class="answer-places-note">From OpenStreetMap, A to Z. Not ranked or endorsed. Hours, websites and phone numbers appear where the listing has them and may be out of date. Capacity and availability are not in this data, so check with each place before planning a visit or event.</p>
+                        </div>
                     </section>
                     <section id="answerAction" class="answer-action" hidden>
                         <h3>Next step</h3>
@@ -98,10 +100,10 @@
                 </div>
             <div class="question-examples" aria-label="Example questions">
                 <span>Try a question</span>
-                <button type="button" data-question="Should I open a bookstore in Fenton Village?">Should I open a bookstore in Fenton Village? <span aria-hidden="true">↗</span></button>
-                <button type="button" data-question="How many restaurants are in Fenton Village?">How many restaurants are in Fenton Village? <span aria-hidden="true">↗</span></button>
-                <button type="button" data-question="We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here?">We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here? <span aria-hidden="true">↗</span></button>
-                <button type="button" data-question="How many people who identify as female live in Silver Spring?">How many people who identify as female live in Silver Spring? <span aria-hidden="true">↗</span></button>
+                <button type="button" data-question="Should I open a bookstore in Fenton Village?">Should I open a bookstore in Fenton Village? <span aria-hidden="true">&#x2197;&#xFE0E;</span></button>
+                <button type="button" data-question="How many restaurants are in Fenton Village?">How many restaurants are in Fenton Village? <span aria-hidden="true">&#x2197;&#xFE0E;</span></button>
+                <button type="button" data-question="We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here?">We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here? <span aria-hidden="true">&#x2197;&#xFE0E;</span></button>
+                <button type="button" data-question="How many people who identify as female live in Silver Spring?">How many people who identify as female live in Silver Spring? <span aria-hidden="true">&#x2197;&#xFE0E;</span></button>
             </div>
             </section>
 
@@ -150,6 +152,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=open-on-tool-1"></script>
+    <script src="script.js?v=arwa-fixes-1"></script>
 </body>
 </html>
