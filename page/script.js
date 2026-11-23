@@ -3,7 +3,7 @@
 // Local testing uses the API on this computer. The hosted page uses Render.
 const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 const API_BASE_URL = isLocal ? "http://127.0.0.1:8000" : "https://civiclens-api-ack0.onrender.com";
-const SCOPE_MESSAGE = "I can't answer that from the data I have. I can tell you about population, languages spoken at home, household income, foreign-born residents, housing, commuting and local businesses for Silver Spring, Maryland and its neighborhoods, how those have changed since 2016, and how Silver Spring compares with the rest of Montgomery County.";
+const SCOPE_MESSAGE = "I can't answer that from the data I have. I can tell you about population, languages spoken at home, household income, foreign-born residents, housing, commuting, local businesses, venues and transit stops for Silver Spring, Maryland and its neighborhoods, how those have changed since 2016, and how Silver Spring compares with the rest of Montgomery County. I can also show reported crime, building permits and pedestrian-struck dispatches year by year.";
 
 function initAppPage() {
     const element = (id) => document.getElementById(id);
@@ -20,6 +20,9 @@ function initAppPage() {
         visual: element("answerVisual"),
         visualTitle: element("answerVisualTitle"),
         visualItems: element("answerVisualItems"),
+        trendChart: element("answerTrendChart"),
+        trendReadout: element("answerTrendReadout"),
+        visualNote: element("answerVisualNote"),
         action: element("answerAction"),
         nextStep: element("answerNextStep"),
         details: element("answerDetails"),
@@ -546,7 +549,160 @@ function initAppPage() {
         section.hidden = false;
     }
 
+    // The yearly chart is drawn at the container's real width, so its text
+    // stays 12px on a phone instead of shrinking with a scaled viewBox.
+    let currentTrend = null;
+    const SVG_NS = "http://www.w3.org/2000/svg";
+
+    function svgNode(name, attributes) {
+        const node = document.createElementNS(SVG_NS, name);
+        Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
+        return node;
+    }
+
+    function niceCeiling(value) {
+        if (value <= 0) return 1;
+        const power = 10 ** Math.floor(Math.log10(value));
+        const step = [1, 2, 2.5, 5, 10].find((factor) => factor * power >= value);
+        return step * power;
+    }
+
+    function usableTrend(visual) {
+        const points = visual?.points;
+        return visual?.kind === "line" && Array.isArray(points) && points.length >= 3
+            && points.every((point) => Number.isFinite(point.value) && point.value >= 0
+                && typeof point.label === "string" && typeof point.display === "string");
+    }
+
+    function trendReading(point) {
+        return `${point.label}: ${point.display}${point.partial ? " (not a full year)" : ""}`;
+    }
+
+    function drawTrend() {
+        const visual = currentTrend;
+        const box = ui.trendChart;
+        box.replaceChildren();
+        if (!visual) return;
+        const points = visual.points;
+        const width = Math.max(260, Math.round(box.clientWidth || 560));
+        const height = 190;
+        const margin = { top: 22, right: 20, bottom: 26, left: 20 };
+        const plotWidth = width - margin.left - margin.right;
+        const plotHeight = height - margin.top - margin.bottom;
+        // The grid tops out a little above the highest returned value. The
+        // grid carries no numbers: every figure a reader sees on this chart
+        // is a returned value, never a rounded axis step.
+        const top = niceCeiling(Math.max(...points.map((point) => point.value)));
+        const x = (index) => margin.left + (points.length === 1 ? plotWidth / 2 : plotWidth * index / (points.length - 1));
+        const y = (value) => margin.top + plotHeight * (1 - value / top);
+
+        const svg = svgNode("svg", { width, height, viewBox: `0 0 ${width} ${height}`, class: "answer-trend-svg",
+            role: "img", tabindex: 0 });
+        svg.setAttribute("aria-label", `${visual.title}, ${points[0].label} to ${points[points.length - 1].label}. `
+            + "Use the left and right arrow keys to read each year. Every value is also in the supporting data table.");
+
+        [0, top / 2, top].forEach((tick) => {
+            svg.appendChild(svgNode("line", { x1: margin.left, x2: width - margin.right, y1: y(tick), y2: y(tick),
+                class: tick === 0 ? "trend-baseline" : "trend-grid" }));
+        });
+
+        const labelEvery = Math.max(1, Math.ceil(points.length / Math.max(2, Math.floor(plotWidth / 56))));
+        points.forEach((point, index) => {
+            const last = index === points.length - 1;
+            if (index % labelEvery !== 0 && !last) return;
+            if (!last && index !== 0 && points.length - 1 - index < labelEvery / 2) return;
+            const label = svgNode("text", { x: x(index), y: height - 8, "text-anchor": index === 0 ? "start" : last ? "end" : "middle",
+                class: "trend-axis" });
+            label.textContent = point.label;
+            svg.appendChild(label);
+        });
+
+        // Solid between full years, dashed into or out of a partial one.
+        for (let index = 1; index < points.length; index += 1) {
+            const partial = points[index - 1].partial || points[index].partial;
+            svg.appendChild(svgNode("line", { x1: x(index - 1), y1: y(points[index - 1].value), x2: x(index),
+                y2: y(points[index].value), class: partial ? "trend-line trend-line-partial" : "trend-line" }));
+        }
+
+        const crosshair = svgNode("line", { y1: margin.top, y2: margin.top + plotHeight, class: "trend-crosshair" });
+        svg.appendChild(crosshair);
+        // Direct labels on the highest year and the latest year only.
+        const highest = points.reduce((best, point, index) => (point.value > points[best].value ? index : best), 0);
+        [...new Set([highest, points.length - 1])].forEach((index) => {
+            const anchor = index === 0 ? "start" : index === points.length - 1 ? "end" : "middle";
+            const label = svgNode("text", { x: x(index) + (anchor === "end" ? 6 : anchor === "start" ? -6 : 0),
+                y: y(points[index].value) - 10, "text-anchor": anchor, class: "trend-value" });
+            label.textContent = points[index].display;
+            svg.appendChild(label);
+        });
+
+        const markers = points.map((point, index) => {
+            const marker = svgNode("circle", { cx: x(index), cy: y(point.value), r: 4,
+                class: point.partial ? "trend-point trend-point-partial" : "trend-point" });
+            svg.appendChild(marker);
+            return marker;
+        });
+
+        let active = points.length - 1;
+        const select = (index) => {
+            active = Math.min(points.length - 1, Math.max(0, index));
+            crosshair.setAttribute("x1", x(active));
+            crosshair.setAttribute("x2", x(active));
+            markers.forEach((marker, markerIndex) => marker.classList.toggle("is-active", markerIndex === active));
+            ui.trendReadout.textContent = trendReading(points[active]);
+        };
+        const hit = svgNode("rect", { x: margin.left - 12, y: 0, width: plotWidth + 24, height, class: "trend-hit" });
+        const fromPointer = (event) => {
+            const bounds = svg.getBoundingClientRect();
+            const offset = event.clientX - bounds.left - margin.left;
+            select(Math.round(offset / plotWidth * (points.length - 1)));
+        };
+        hit.addEventListener("pointermove", fromPointer);
+        hit.addEventListener("pointerdown", fromPointer);
+        svg.addEventListener("keydown", (event) => {
+            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                event.preventDefault();
+                select(active + (event.key === "ArrowRight" ? 1 : -1));
+            }
+        });
+        svg.appendChild(hit);
+        box.appendChild(svg);
+        select(active);
+    }
+
+    function renderTrend(visual) {
+        currentTrend = visual;
+        ui.visualTitle.textContent = String(visual.title);
+        ui.trendChart.hidden = false;
+        ui.trendReadout.hidden = false;
+        ui.visualNote.textContent = visual.note ? String(visual.note) : "";
+        ui.visualNote.hidden = !visual.note;
+        drawTrend();
+        // The answer panel may only just have been laid out; draw again at its settled width.
+        requestAnimationFrame(drawTrend);
+    }
+
+    let trendResizeFrame = 0;
+    window.addEventListener("resize", () => {
+        if (!currentTrend) return;
+        cancelAnimationFrame(trendResizeFrame);
+        trendResizeFrame = requestAnimationFrame(drawTrend);
+    });
+
     function renderVisual(visual) {
+        currentTrend = null;
+        ui.trendChart.hidden = true;
+        ui.trendChart.replaceChildren();
+        ui.trendReadout.hidden = true;
+        ui.visualNote.hidden = true;
+        ui.visualItems.hidden = false;
+        if (usableTrend(visual)) {
+            ui.visualItems.replaceChildren();
+            ui.visualItems.hidden = true;
+            ui.visual.hidden = false;
+            renderTrend(visual);
+            return;
+        }
         const items = visual?.items;
         const max = visual?.scale_max;
         const usable = Array.isArray(items) && items.length >= 2 && Number.isFinite(max) && max > 0
