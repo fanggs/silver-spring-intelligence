@@ -203,9 +203,15 @@ def index():
     }
 
 
+# Render sets RENDER_GIT_COMMIT on every deploy. Reporting it lets anyone
+# confirm which version is live with one request instead of guessing from
+# changed behavior.
+RUNNING_COMMIT = (os.environ.get("RENDER_GIT_COMMIT") or "local")[:7]
+
+
 @app.get("/health")
 def health():
-    """Alive check, plus a quick look at whether the database is present."""
+    """Alive check, the running commit, and whether the database is present."""
     try:
         conn = sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)
         placeholders = ",".join("?" * len(SILVER_SPRING_GEOIDS))
@@ -221,12 +227,13 @@ def health():
         conn.close()
         return {
             "ok": True,
+            "commit": RUNNING_COMMIT,
             "model": MODEL,
             "silver_spring": {"tracts": ss_tracts, "businesses": ss_biz},
             "county": {"tracts": tracts, "businesses": biz},
         }
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "commit": RUNNING_COMMIT, "error": str(exc)}
 
 
 @app.get('/coverage')

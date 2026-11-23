@@ -83,6 +83,9 @@ class StreamTests(unittest.TestCase):
     def test_health_names_the_model(self):
         self.assertEqual(TestClient(main.app).get("/health").json()["model"], main.MODEL)
 
+    def test_health_names_the_running_commit(self):
+        self.assertEqual(TestClient(main.app).get("/health").json()["commit"], main.RUNNING_COMMIT)
+
 
 if __name__ == "__main__":
     unittest.main()
