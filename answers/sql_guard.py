@@ -12,8 +12,11 @@ import sqlite3
 import time
 
 BANNED = re.compile(
-    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|REPLACE|TRUNCATE|"
-    r"ATTACH|DETACH|PRAGMA|VACUUM|REINDEX|GRANT|EXEC)\b",
+    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|"
+    r"ATTACH|DETACH|PRAGMA|VACUUM|REINDEX|GRANT|EXEC)\b"
+    # REPLACE is banned as a statement (REPLACE INTO, INSERT OR REPLACE) but
+    # replace(text, from, to) is an ordinary read-only string function.
+    r"|\bREPLACE\b(?!\s*\()",
     re.IGNORECASE,
 )
 

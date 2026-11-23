@@ -78,7 +78,10 @@ question
    v
 [1] Claude writes SQL        model: claude-haiku-5-5, effort medium, max_tokens 8000
    |                         input: schema prompt (cached) + question
-   |                         output: ONE SQLite SELECT, or "CANNOT_ANSWER"
+   |                         output: the main SELECT, plus up to 3 labelled
+   |                         "-- evidence:" SELECTs for decision questions
+   |                         (demand, supply, access, risk, trend, benchmark),
+   |                         or "CANNOT_ANSWER"
    v
 [2] sql_guard.validate()     model is now OUT of the loop
    |
@@ -199,6 +202,41 @@ partial and sees all the yearly rows, not just the first 25.
 
 ---
 
+## Evidence queries and context data (Nov 23)
+
+A decision question ("should I open a gym", "where should the county put a
+pantry") needs several facts side by side and a benchmark, which one query
+rarely gives. So the query step may return up to four SELECTs: the main one
+first (it drives the map, chart and places exactly as before) and up to three
+labelled evidence queries. Each goes through the same guard and read-only
+execution; a failing evidence query is logged and skipped. The answer step
+sees all their rows, and the number check accepts a figure only if it is in
+one of them. Principle 1 is unchanged: every number still comes out of the
+database in that request. Each evidence table is shown under the answer.
+
+Context tables, built by `get_data/fetch_insights.py` and registered in
+`insight_sources` (same columns as `community_sources`, so the prompt
+describes them automatically; guidance in `answers/insight_context.py`):
+
+| Table | Source | Answers |
+|---|---|---|
+| `acs_measures` + `acs_measure_labels` | Census API, ACS 2016-2020 and 2020-2024, every county tract, every Maryland place, ZIP areas, counties, state, US | rent, home value, rent burden, poverty, unemployment, age, degrees, commute, cars, broadband, limited English, languages, occupation, industry; comparisons with Bethesda, Rockville, the county |
+| `jobs_by_tract` | LEHD LODES 8 workplace data, 2018 and 2023 | jobs located here by sector, pay and age (daytime population) |
+| `business_patterns` | County Business Patterns 2018-2023 by ZIP and county | establishments by detailed industry, change over time, per resident |
+| `county_commercial_permits` | dataMontgomery i26v-w6bd | big projects, new construction |
+| `county_crashes`, `county_crash_nonmotorists` | dataMontgomery bhju-22kf, n7fk-dce5 | crashes by time, light, severity, pedestrians and cyclists |
+| `county_parking_facilities` | dataMontgomery rd7s-ntxu | public garage and lot capacity |
+| `county_food_businesses` | dataMontgomery inspections (5pue-gfbe, dkrp-gr48) | food businesses with first/latest inspection (openings, closures) |
+| `county_rental_survey` | dataMontgomery 65hk-6zwc | average rent by building and unit type, 2016-2022 |
+| `county_liquor_licenses` | dataMontgomery c6rw-fazn | licensed restaurants, bars, stores |
+| `county_development_pipeline` | Montgomery Planning pipeline layer | approved, unbuilt homes and space |
+| `places` (kind 'planning area') | Montgomery Planning master/sector plan boundaries | named areas such as Long Branch, Takoma/Langley |
+
+These are loaded once, not by the weekly refresh. Rerun with
+`python -m get_data.fetch_insights [--only NAME ...]`.
+
+---
+
 # Part 3 — Things we tried that don't work
 
 Permanent. These cost hours; don't rediscover them.
@@ -227,3 +265,17 @@ Use the namesake-street-clipped-to-CBD method.
 **Manual Render setup does not apply `render.yaml`.** A static site created
 through the dashboard needs the `/` → `/index.html` rewrite added by hand, or
 the root 404s while every other path works.
+
+**The Census API wants the 5-digit place code.** `for=place:72450&in=state:24`,
+not the 7-digit GEOID `2472450`; the wrong form returns an empty body, not an
+error.
+
+**County inspection records changed vocabulary in July 2024.** The older
+dataset says Restaurant / Carry Out / Market, the newer says Food Service
+Facility, and the same business is spelled differently across the two. Match
+on normalized address plus first name word, and compare by `category`.
+
+**Every ACS cell for every Maryland place made the database 194 MB.** The
+file is committed to git (GitHub's hard limit is 100 MB). Detail tables are
+kept only for local places, labels live in `acs_measure_labels`, and there are
+no indexes on `acs_measures` (a scan takes milliseconds). It is 66 MB now.

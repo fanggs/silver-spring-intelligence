@@ -185,6 +185,10 @@ button,input{font:inherit;}
 .trend-hit{fill:transparent;cursor:crosshair;}
 .trend-value{fill:var(--ink);stroke:var(--white);stroke-width:3px;paint-order:stroke;stroke-linejoin:round;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;}
 .answer-visual-note{margin-top:8px;color:var(--muted);font-size:13px;line-height:1.45;}
+.answer-evidence section{margin:14px 0 4px;}
+.answer-evidence h3{margin-bottom:6px;font-size:14px;font-weight:700;}
+.answer-evidence table{width:100%;border-collapse:collapse;font-size:13px;}
+.answer-evidence th,.answer-evidence td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top;}
 .answer-details{margin-top:12px;border-top:1px solid var(--border);}
 .answer-details summary{padding:13px 0;color:var(--forest);font-size:14px;font-weight:700;cursor:pointer;}
 .app-table-wrap{overflow-x:auto;padding-bottom:8px;}

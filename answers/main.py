@@ -34,7 +34,7 @@ from pydantic import BaseModel
 from answers.schema import SCHEMA_DESCRIPTION, COVERAGE_BLURB
 from answers.sql_guard import run, UnsafeQuery
 from answers.community_context import CRIME_GROUPS, catalog, crime_group, schema_context, used_sources, notes as community_notes
-from answers import demographic_context
+from answers import demographic_context, insight_context
 from answers.response_cache import AnswerCache
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -280,7 +280,7 @@ def tracts(scope: str = "silver-spring"):
     # on the signage - then the neighbourhoods.
     names = {}
     for r in conn.execute(
-        """SELECT geoid, name FROM places
+        """SELECT geoid, name FROM places WHERE kind != 'planning area'
            ORDER BY CASE WHEN kind = 'district' THEN 0 ELSE 1 END, name"""
     ):
         names.setdefault(r["geoid"], []).append(r["name"])
@@ -421,12 +421,14 @@ def _answer_question(q: Question):
     # prompt and is cached; only the question part changes.
     schema_prefix = (
         f"{SCHEMA_DESCRIPTION}\n\n{schema_context(DATABASE_PATH)}\n\n{demographic_context.schema_context(DATABASE_PATH)}\n\n"
+        f"{insight_context.schema_context(DATABASE_PATH)}\n\n"
     )
     sql_prompt = (
         schema_prefix +
         f"User question: {question}\n\n"
-        "Write ONE SQLite SELECT query that answers it. Output only the SQL, "
-        "no explanation and no markdown fences. If the question cannot be "
+        "Write the SQLite SELECT query that answers it, plus up to 3 evidence queries when the "
+        "guidance above calls for them, each after its own '-- evidence: <label>' line. Output only "
+        "the SQL, no explanation and no markdown fences. If the question cannot be "
         "answered from these tables, output exactly: CANNOT_ANSWER"
     )
     _progress("query")
@@ -450,6 +452,12 @@ def _answer_question(q: Question):
         # the clearest sign of a dataset worth adding.
         _log_gap(question, "no_data_for_question")
         return _cannot()
+
+    # Several queries may come back: the main one first, then evidence
+    # queries for the other factors a decision needs. Each is validated and
+    # run exactly like the main one; the model never sees their numbers
+    # until the database has produced them.
+    sql, evidence_blocks = _evidence_blocks(sql)
 
     # 2. Validate and run it read-only against the real database.
     _progress("database")
@@ -479,6 +487,8 @@ def _answer_question(q: Question):
             if "CANNOT_ANSWER" in sql.upper():
                 _log_gap(question, "no_data_for_question")
                 return _cannot()
+            sql, repaired_evidence = _evidence_blocks(sql)
+            evidence_blocks = evidence_blocks or repaired_evidence
 
     if not rows:
         _log_gap(question, "no_rows", None, executed_sql)
@@ -489,7 +499,11 @@ def _answer_question(q: Question):
     # place_locations, in code: the model never selects or joins addresses.
     rows, locations = _attach_places(rows, executed_sql)
 
+    evidence = _run_evidence(question, evidence_blocks)
+    evidence_sql = "\n".join(item["sql"] for item in evidence)
     notes = _answer_notes(executed_sql, rows, question)
+    for item in evidence:
+        notes += [note for note in _answer_notes(item["sql"], item["rows"], question) if note not in notes]
     # Tell the user plainly when the list was cut off. It goes first so the
     # page always shows it right under the answer.
     hit_limit = _result_limit(rows, executed_sql, question=question)
@@ -511,26 +525,33 @@ def _answer_question(q: Question):
                     display_row[column] = round(value)
         display_rows.append(display_row)
     display_rows = _with_area_names(display_rows)
+    evidence_display = [dict(item, display=_with_area_names([_display_precision(row) for row in item["rows"][:30]]))
+                        for item in evidence]
+    # Every row the answer may cite a number from: the main query and the evidence.
+    citable_rows = display_rows + [row for item in evidence_display for row in item["display"]]
+    citable_sql = executed_sql + ("\n" + evidence_sql if evidence_sql else "")
     listing_counts = _grouped_business_counts(question, executed_sql, rows)
     summary = None
     next_step = None
     calculations = []
-    if listing_counts:
+    if listing_counts and not evidence:
         items = [f"{count:,} {label} listings" for label, count in listing_counts]
         totals = items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
         summary = f"OpenStreetMap shows {totals} in the selected area."
-    if summary is None:
+    if summary is None and not evidence:
         summary = _place_count(question, executed_sql, rows)
-    if summary is None:
+    if summary is None and not evidence:
         summary = _demographic_count(question, executed_sql, rows)
-    if summary is None:
+    if summary is None and not evidence:
         summary = _single_listing_count(question, executed_sql, rows)
     if summary is None:
         answer_prompt = (
             f"Question: {question}\n\n"
             f"These rows came back from the database:\n"
             f"{json.dumps(display_rows, indent=2)}\n\n"
-            f"Notes displayed separately: {' '.join(notes)}\n\n"
+            + "".join(f"Supporting evidence, {item['label']} (another query on the same database):\n"
+                      f"{json.dumps(item['display'], indent=2)}\n\n" for item in evidence_display)
+            + f"Notes displayed separately: {' '.join(notes)}\n\n"
             + (f"A line chart of these yearly counts is shown under your answer. {trend['note'] or ''} "
                "Never call a change into or out of a year that is not full a rise or a fall; compare "
                "full years. "
@@ -576,7 +597,14 @@ def _answer_question(q: Question):
             "If planning an event, give the organizer a specific question to ask prospective "
             "attendees that will help choose the topic, venue, or format. Avoid generic advice "
             "like 'do market research' and avoid assuming the user can get private sales data. "
-            "Do not add a next step to an ordinary lookup. Use plain text, under 55 words total. "
+            "Do not add a next step to an ordinary lookup. "
+            + ("Use plain text, under 120 words in total. Supporting evidence is given, so synthesise it: "
+               "first a one-sentence direct answer or verdict; then 2-3 short sentences, each giving one "
+               "finding that bears on the decision with its comparison (this area vs Silver Spring, the "
+               "county or a peer place), using the evidence; then the most important unknown. When the "
+               "evidence points both ways, say which way it leans and why. Do not list every number. "
+               "Write it as flowing prose: never label the parts ('Verdict:', 'Finding:', 'Unknown:'). "
+               if evidence else "Use plain text, under 55 words total. ") +
             "For a business idea, discuss only the requested business type unless the user asks "
             "about related types. Give the mapped count and leave any rating of competition "
             "out unless the results include a meaningful benchmark. Describe map results "
@@ -653,7 +681,8 @@ def _answer_question(q: Question):
                                   "the middle area or any average as Silver Spring's median.")
         # Partial-year dates come from the source catalog, so they may be said.
         trend_numbers = {float(n) for n in re.findall(r"\d+", (trend or {}).get("note") or "")}
-        operands =_returned_numbers(rows) | _returned_numbers(display_rows) | set(total_values)
+        operands = (_returned_numbers(rows) | _returned_numbers(display_rows) | set(total_values)
+                    | {n for item in evidence for n in _returned_numbers(item["rows"])})
         last_sections = None
         calculations = []
         for attempt in range(2):
@@ -670,7 +699,7 @@ def _answer_question(q: Question):
             candidate = sections[0].strip()
             last_sections = sections
             unverified = []
-            if candidate and _uses_returned_numbers(candidate, display_rows, executed_sql, allowed_extra, unverified):
+            if candidate and _uses_returned_numbers(candidate, citable_rows, citable_sql, allowed_extra, unverified):
                 summary = candidate
                 if len(sections) == 2:
                     next_step = sections[1].strip() or None
@@ -688,16 +717,16 @@ def _answer_question(q: Question):
             # Both attempts stated at least one figure the database did not
             # return. Keep only the sentences whose every number checks, so
             # the rule still holds and the user still gets the parts that do.
-            summary = _verified_sentences(last_sections[0], display_rows, executed_sql, allowed_extra)
+            summary = _verified_sentences(last_sections[0], citable_rows, citable_sql, allowed_extra)
             dropped = [s for s in _split_sentences(last_sections[0])
-                       if not _uses_returned_numbers(s, display_rows, executed_sql, allowed_extra)]
+                       if not _uses_returned_numbers(s, citable_rows, citable_sql, allowed_extra)]
             _log_gap(question, "trimmed_answer" if summary else "no_verified_answer",
                      {"dropped_sentences": dropped, "calculations": calculations}, executed_sql)
             if summary and len(last_sections) == 2:
                 next_step = last_sections[1].strip() or None
         if summary is None:
             summary = "Open the supporting data for the results."
-        if next_step and not _uses_returned_numbers(next_step, display_rows, executed_sql, allowed_extra if last_sections else total_values, claims=False):
+        if next_step and not _uses_returned_numbers(next_step, citable_rows, citable_sql, allowed_extra if last_sections else total_values, claims=False):
             _log_gap(question, "dropped_next_step", next_step, executed_sql)
             next_step = None
 
@@ -743,8 +772,12 @@ def _answer_question(q: Question):
         "table": _table,
         "table_headers": _headers,
         "rows": rows,
-        "sources": _sources(executed_sql, highlights, rows),
+        "sources": _sources(citable_sql, highlights, rows),
         "sql": executed_sql,
+        # Other queries the answer drew on, each with its own rows, so every
+        # figure in the answer can be found in a table below it.
+        "evidence": [{"label": item["label"], "sql": item["sql"], "rows": item["rows"],
+                      "supporting_data": _supporting_data(_with_area_names(item["rows"]))} for item in evidence],
         # Every calculation shown in the answer, with the exact expression
         # over returned numbers, so any figure can be re-checked by hand.
         "calculations": calculations,
@@ -764,6 +797,59 @@ _META_SENTENCE = re.compile(
     re.I)
 
 
+_EVIDENCE_MARK = re.compile(r"^\s*--\s*evidence\s*:\s*(.*)$", re.I | re.M)
+MAX_EVIDENCE = 3
+
+
+def _evidence_blocks(text):
+    """Split the model's output into the main query and labelled evidence queries.
+
+    Text before the first '-- evidence:' line is the main query. A block
+    with no SQL in it is dropped; the guard still checks every query."""
+    text = re.sub(r"```(?:sql)?", "", text or "")
+    marks = list(_EVIDENCE_MARK.finditer(text))
+    if not marks:
+        return text.strip(), []
+    main = text[:marks[0].start()].strip()
+    blocks = []
+    for index, mark in enumerate(marks):
+        end = marks[index + 1].start() if index + 1 < len(marks) else len(text)
+        body = text[mark.end():end].strip().rstrip(";").strip()
+        if re.match(r"(?is)^(?:select|with)\b", body):
+            blocks.append((mark.group(1).strip()[:120] or "Supporting evidence", body))
+    if not main and blocks:
+        # The model labelled its main query too.
+        main = blocks.pop(0)[1]
+    return main, blocks[:MAX_EVIDENCE]
+
+
+def _run_evidence(question, blocks):
+    found = []
+    for label, block in blocks:
+        try:
+            rows, executed = _run_query(block)
+        except UnsafeQuery as exc:
+            _log_gap(question, "unsafe_evidence_query", str(exc), block)
+            continue
+        except sqlite3.Error as exc:
+            _log_gap(question, "evidence_query_error", str(exc), block)
+            continue
+        if rows:
+            found.append({"label": _no_tract_words(label), "sql": executed, "rows": _neutral_union_columns(rows, executed)})
+    return found
+
+
+def _display_precision(row):
+    out = dict(row)
+    for column, value in row.items():
+        if isinstance(value, float):
+            if _is_percentage(column):
+                out[column] = round(value, 1)
+            elif "income" in column or "rent" in column or "value" in column:
+                out[column] = round(value)
+    return out
+
+
 _DANGLING_START = re.compile(r"^(?:Those|These|They|Them|That|This|It|Its)\b")
 
 
@@ -774,12 +860,16 @@ def _anchor_dangling_start(text, rows):
     "Those include 7-Eleven, Aldi..." with nothing for "those" to mean. The
     total comes from the query's own total_count, so no new number appears.
     """
-    if not text or not _DANGLING_START.match(text) or not rows:
+    if not text or not _DANGLING_START.match(text):
         return text
-    total = rows[0].get("total_count")
-    if type(total) is not int or total <= 0:
-        return text
-    return f"The data returned {total:,} matching mapped listings. {text}"
+    total = rows[0].get("total_count") if rows else None
+    if type(total) is int and total > 0:
+        listings = any(key in rows[0] for key in ("name", "category", "osm_amenity", "osm_shop"))
+        return f"The data returned {total:,} {'matching mapped listings' if listings else 'matching results'}. {text}"
+    # No total to anchor it: the opening sentence points at a figure that was
+    # trimmed ("That makes it 1.8 times..."), so it is dropped if others remain.
+    sentences = _split_sentences(text)
+    return " ".join(sentences[1:]) if len(sentences) > 1 else text
 
 
 def _no_meta_sentences(text):
@@ -798,7 +888,7 @@ def _place_names_by_geoid():
     try:
         conn = sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)
         for geoid, name in conn.execute(
-            """SELECT geoid, name FROM places
+            """SELECT geoid, name FROM places WHERE kind != 'planning area'
                ORDER BY CASE WHEN kind = 'district' THEN 0 ELSE 1 END, name"""
         ):
             _PLACE_NAME_CACHE.setdefault(geoid, []).append(name)
@@ -1717,13 +1807,19 @@ def _returned_numbers(rows):
     return {float(v) for row in rows for v in row.values() if type(v) in (int, float)}
 
 
+SCALE_FACTORS = {100.0, 1000.0, 10000.0, 100000.0}
+# "per 1,000 residents" names a unit, not a figure.
+_PER_SCALE = re.compile(r"\bper\s+(?:1,000|10,000|100,000|1000|10000|100000)\b", re.I)
+
+
 def _apply_calculations(text, operands):
     """Replace each [[calc: expr]] with its exact result, computed here.
 
     The model chooses WHAT to calculate; code does the arithmetic. Every
     operand must be a number the database returned (or an exact total
-    computed from those rows). The only other constant allowed is 100, for
-    percentages. Anything else (an invented operand, a function call,
+    computed from those rows). The only other constants allowed are scale
+    factors: 100 for percentages and 1,000 / 10,000 / 100,000 for rates
+    per resident ("cafes per 1,000 residents"). Anything else (an invented operand, a function call,
     division by zero) becomes CALC_ERROR, which the number guard rejects,
     so its sentence is dropped rather than shown.
     Returns (new_text, calculations) where each calculation records the
@@ -1733,7 +1829,7 @@ def _apply_calculations(text, operands):
     import operator
     ops = {ast.Add: operator.add, ast.Sub: operator.sub,
            ast.Mult: operator.mul, ast.Div: operator.truediv}
-    allowed = set(operands) | {100.0}
+    allowed = set(operands) | SCALE_FACTORS
     calculations = []
 
     def evaluate(node):
@@ -2018,6 +2114,33 @@ def _word_numbers(text):
     return found
 
 
+_DEFINITIONS = None
+
+
+def _definition_numbers(sql):
+    """Digits in the names and Census labels of real columns and measures the SQL uses."""
+    global _DEFINITIONS
+    if _DEFINITIONS is None:
+        _DEFINITIONS = {}
+        try:
+            with closing(sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True)) as con:
+                tables = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+                for table in tables:
+                    for column in con.execute(f'PRAGMA table_info("{table}")'):
+                        if re.search(r"\d", column[1]):
+                            _DEFINITIONS[column[1]] = column[1]
+                if "acs_measure_labels" in tables:
+                    for measure, label in con.execute("SELECT measure, label FROM acs_measure_labels WHERE measure NOT LIKE '%:%'"):
+                        _DEFINITIONS[measure] = f"{measure} {label}"
+        except sqlite3.Error:
+            pass
+    found = set()
+    for name, text in _DEFINITIONS.items():
+        if re.search(rf"\b{re.escape(name)}\b", sql or ""):
+            found.update(float(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", text.replace("_", " ")))
+    return found
+
+
 def _uses_returned_numbers(answer, rows, sql=None, extra=(), missing=None, claims=True):
     """Reject new written numbers, including values copied from the question.
 
@@ -2041,13 +2164,23 @@ def _uses_returned_numbers(answer, rows, sql=None, extra=(), missing=None, claim
     if sql:
         for literal in re.findall(r"'([^']*)'", sql):
             allowed.update(float(year) for year in re.findall(r"(?<!\d)((?:19|20)\d{2})(?=-\d{2}(?:-\d{2})?(?!\d))", literal))
+            # ZIP codes the query filtered on name its scope, like a year.
+            allowed.update(float(zip_code) for zip_code in re.findall(r"^(20[89]\d{2})$", literal.strip()))
+        # Numbers that define a measure the query used ("children under 5",
+        # "65 and over", "30% or more of income on rent"): they come from the
+        # schema and the Census labels, not from the model.
+        allowed.update(_definition_numbers(sql))
+        # A year the query filtered on as a number (year = 2023, IN (2018, 2023)).
+        allowed.update(float(year) for year in re.findall(
+            r"\byear\s*(?:=|>=|<=|>|<|IN\s*\(|BETWEEN)\s*((?:19|20)\d{2})(?:\s*(?:,|AND)\s*((?:19|20)\d{2}))?", sql, re.I)
+            for year in year if year)
     for row in rows:
         for key, value in row.items():
             # Dates, source capacity text and other returned descriptive fields
             # are evidence too. Exclude URLs/opaque IDs as numerical claims.
             if isinstance(value, str) and key not in {"source_url", "duplicate_source_url", "geoid", "source_tract_id", "business_id", "osm_id", "incident_id"}:
                 allowed.update(numbers(value))
-    unsupported = numbers(answer) - allowed
+    unsupported = numbers(_PER_SCALE.sub("per", answer)) - allowed
     problems = [_format_calculated(n) for n in sorted(unsupported)]
     if claims:
         # A next step is advice on what to find out ("ask how busy foot
