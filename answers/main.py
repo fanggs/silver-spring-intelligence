@@ -864,7 +864,7 @@ def _anchor_dangling_start(text, rows):
         return text
     total = rows[0].get("total_count") if rows else None
     if type(total) is int and total > 0:
-        listings = any(key in rows[0] for key in ("name", "category", "osm_amenity", "osm_shop"))
+        listings = any(key in rows[0] for key in ("name", "category", "osm_amenity", "osm_shop", "osm_leisure", "osm_office", "osm_tourism", "osm_craft"))
         return f"The data returned {total:,} {'matching mapped listings' if listings else 'matching results'}. {text}"
     # No total to anchor it: the opening sentence points at a figure that was
     # trimmed ("That makes it 1.8 times..."), so it is dropped if others remain.
@@ -1142,7 +1142,7 @@ def _single_listing_count(question, sql, rows):
         # A generic column name: name what the query actually filtered on
         # (osm_amenity = 'restaurant' -> "restaurant"), so 43 restaurants are
         # never described as 43 businesses. Only one exact filter qualifies.
-        filters = re.findall(r"\b(?:osm_amenity|osm_shop|category)\s*=\s*'([a-z_]+)'", sql, re.I)
+        filters = re.findall(r"\b(?:osm_amenity|osm_shop|osm_leisure|osm_tourism|osm_office|osm_craft|category)\s*=\s*'([a-z_]+)'", sql, re.I)
         label = filters[0].replace('_', ' ') if len(set(filters)) == 1 else 'business'
     with sqlite3.connect(f'file:{DATABASE_PATH}?mode=ro', uri=True) as con:
         names = [r[0] for r in con.execute('SELECT DISTINCT name FROM places ORDER BY LENGTH(name) DESC')]

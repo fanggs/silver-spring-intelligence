@@ -70,8 +70,8 @@ def validate_database(path=DATABASE_PATH):
                 "Industry counts do not add up to employed residents")
         count = db.execute("SELECT COUNT(*) FROM businesses").fetchone()[0]
         require(count > 0 and not db.execute("""
-            SELECT 1 FROM businesses WHERE (osm_amenity IS NULL AND osm_shop IS NULL)
-                OR category != replace(coalesce(osm_amenity, osm_shop), '_', ' ')
+            SELECT 1 FROM businesses WHERE coalesce(osm_amenity, osm_shop, osm_leisure, osm_tourism, osm_office, osm_craft) IS NULL
+                OR category != replace(coalesce(osm_amenity, osm_shop, osm_leisure, osm_tourism, osm_office, osm_craft), '_', ' ')
                 OR source_url NOT LIKE 'https://www.openstreetmap.org/%/%'
         """).fetchone(), "Missing businesses or lost original OpenStreetMap types")
         sources = {r[0] for r in db.execute("SELECT dataset_id FROM data_sources")}

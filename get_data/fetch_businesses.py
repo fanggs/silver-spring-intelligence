@@ -13,7 +13,20 @@ OVERPASS_URLS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 )
-QUERY = '[out:json][timeout:90];(nwr["amenity"](38.93,-77.55,39.35,-76.90);nwr["shop"](38.93,-77.55,39.35,-76.90););out center tags;'
+BOX = "(38.93,-77.55,39.35,-76.90)"
+# Business-like leisure and tourism values only: a playground or a park pitch
+# is not a business, a gym or a hotel is. Every named office and craft counts.
+LEISURE = ("fitness_centre", "sports_centre", "sports_hall", "dance", "bowling_alley", "escape_game",
+           "amusement_arcade", "adult_gaming_centre", "ice_rink", "trampoline_park", "climbing", "golf_course",
+           "miniature_golf", "swimming_pool", "sauna", "water_park", "hackerspace", "horse_riding")
+TOURISM = ("hotel", "motel", "hostel", "guest_house", "museum", "gallery", "theme_park", "zoo", "aquarium")
+EXTRA_QUERY_PARTS = (f'nwr["leisure"~"^({"|".join(LEISURE)})$"]{BOX};nwr["office"]{BOX};'
+                     f'nwr["tourism"~"^({"|".join(TOURISM)})$"]{BOX};nwr["craft"]{BOX};')
+QUERY = f'[out:json][timeout:90];(nwr["amenity"]{BOX};nwr["shop"]{BOX};{EXTRA_QUERY_PARTS});out center tags;'
+EXTRA_QUERY = f'[out:json][timeout:90];({EXTRA_QUERY_PARTS});out center tags;'
+TAG_KEYS = ("amenity", "shop", "leisure", "tourism", "office", "craft")
+GROUPS = {"leisure": "recreation and fitness", "tourism": "lodging and attractions", "office": "office",
+          "craft": "trades and crafts"}
 HEADERS = {"Accept": "application/json", "User-Agent": "CivicLens-BayHacks/1.0"}
 FOOD_AND_DRINK = {"restaurant", "fast_food", "cafe", "bar", "pub", "biergarten", "ice_cream", "food_court"}
 
@@ -48,15 +61,28 @@ def fetch_businesses(payload=None):
         latitude = item.get("lat", item.get("center", {}).get("lat"))
         longitude = item.get("lon", item.get("center", {}).get("lon"))
         name = tags.get("name", "").strip()
-        amenity, shop = tags.get("amenity"), tags.get("shop")
-        if not name or latitude is None or longitude is None or not (amenity or shop):
+        found = {key: tags.get(key) for key in TAG_KEYS}
+        if found["leisure"] not in LEISURE:
+            found["leisure"] = None
+        if found["tourism"] not in TOURISM:
+            found["tourism"] = None
+        # The first tag in TAG_KEYS order is the listing's type, so a place
+        # that is both a shop and an office stays a shop, as before.
+        key = next((k for k in TAG_KEYS if found[k]), None)
+        if not name or latitude is None or longitude is None or not key:
             continue
         kind, osm_id = item["type"], item["id"]
-        group = "food and drink" if amenity in FOOD_AND_DRINK else "retail" if shop else "other amenity"
+        amenity, shop = found["amenity"], found["shop"]
+        group = ("food and drink" if amenity in FOOD_AND_DRINK else "retail" if shop
+                 else "other amenity" if amenity else GROUPS[key])
         points.append({
             "business_id": hashlib.sha1(f"{kind}:{osm_id}".encode()).hexdigest(),
-            "name": name, "category": (amenity or shop).replace("_", " "),
+            "name": name, "category": found[key].replace("_", " "),
             "category_group": group, "osm_amenity": amenity, "osm_shop": shop,
+            "osm_leisure": found["leisure"] if key == "leisure" else None,
+            "osm_office": found["office"] if key == "office" else None,
+            "osm_tourism": found["tourism"] if key == "tourism" else None,
+            "osm_craft": found["craft"] if key == "craft" else None,
             "address": " ".join(filter(None, (tags.get("addr:housenumber"), tags.get("addr:street")))),
             "latitude": latitude, "longitude": longitude,
             "source_name": "OpenStreetMap via Overpass API",
@@ -76,8 +102,8 @@ def deduplicate_businesses(rows):
     """Merge unambiguous nearby node/area pairs and retain both OSM object URLs."""
     groups = defaultdict(list)
     for row in rows:
-        groups[(" ".join(row["name"].casefold().split()), row["osm_amenity"],
-                row["osm_shop"], row["geoid"])].append(row)
+        groups[(" ".join(row["name"].casefold().split()), row["category"],
+                row["category_group"], row["geoid"])].append(row)
     merged = []
     for group in groups.values():
         if len(group) == 2:

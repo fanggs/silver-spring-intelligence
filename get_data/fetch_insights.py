@@ -779,6 +779,36 @@ def build_pipeline(db):
                     "estimates for the approved space, not current jobs.", count)
 
 
+
+# ------------------------------------------ OpenStreetMap business types
+
+def build_business_types(db):
+    """Add named gyms, hotels, offices and trades to businesses.
+
+    The original load asked OpenStreetMap only for amenity and shop tags.
+    This adds only listings that have neither, so every existing row and
+    count stays exactly as it was; a full rebuild now fetches all types."""
+    from .fetch_businesses import EXTRA_QUERY, deduplicate_businesses, fetch_businesses, fetch_osm
+    columns = {r[1] for r in db.execute("PRAGMA table_info(businesses)")}
+    for column in ("osm_leisure", "osm_office", "osm_tourism", "osm_craft"):
+        if column not in columns:
+            db.execute(f"ALTER TABLE businesses ADD COLUMN {column} TEXT")
+    db.execute("""DELETE FROM businesses WHERE osm_amenity IS NULL AND osm_shop IS NULL
+                  AND coalesce(osm_leisure, osm_office, osm_tourism, osm_craft) IS NOT NULL""")
+    existing = {r[0] for r in db.execute("SELECT business_id FROM businesses")}
+    rows = [r for r in fetch_businesses(fetch_osm(EXTRA_QUERY))
+            if not r["osm_amenity"] and not r["osm_shop"] and r["business_id"] not in existing]
+    shapes = {r[0]: {"geometry_geojson": r[1]} for r in db.execute("SELECT geoid, geometry_geojson FROM tract_data")}
+    rows = deduplicate_businesses(assign_business_tracts(rows, shapes))
+    names = [r[1] for r in db.execute("PRAGMA table_info(businesses)")]
+    db.executemany(f"INSERT INTO businesses ({','.join(names)}) VALUES ({','.join('?' * len(names))})",
+                   [[row.get(n) for n in names] for row in rows])
+    counts = {}
+    for row in rows:
+        counts[row["category_group"]] = counts.get(row["category_group"], 0) + 1
+    print(f"  added {len(rows)} listings: {counts}", flush=True)
+    return {"businesses (added types)": len(rows)}
+
 # ---------------------------------------------------------------- registry
 
 def register(db, source_id, table, label, url, vintage, geography, note, count, first=None, last=None):
@@ -799,6 +829,7 @@ BUILDERS = {
     "commercial_permits": build_commercial_permits, "crashes": build_crashes, "parking": build_parking,
     "food": build_food, "rents": build_rents, "liquor": build_liquor,
     "planning_areas": build_planning_areas, "pipeline": build_pipeline,
+    "business_types": build_business_types,
 }
 
 
