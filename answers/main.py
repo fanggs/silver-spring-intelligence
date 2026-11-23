@@ -497,8 +497,11 @@ def _answer_question(q: Question):
         notes = [limited_results_note(hit_limit)] + notes
 
     # Pass display precision to the model while keeping the raw query values.
+    # A yearly series is short and its last years are the point, so the
+    # model sees all of it rather than the first 25 rows.
+    trend = _trend_visual(executed_sql, rows)
     display_rows = []
-    for row in rows[:25]:
+    for row in rows[:60 if trend else 25]:
         display_row = dict(row)
         for column, value in row.items():
             if isinstance(value, float):
@@ -528,6 +531,10 @@ def _answer_question(q: Question):
             f"These rows came back from the database:\n"
             f"{json.dumps(display_rows, indent=2)}\n\n"
             f"Notes displayed separately: {' '.join(notes)}\n\n"
+            + (f"A line chart of these yearly counts is shown under your answer. {trend['note'] or ''} "
+               "Never call a change into or out of a year that is not full a rise or a fall; compare "
+               "full years. "
+               if trend else "")
             + ("Every listed place is shown below your answer in a list with its street address, and "
                "clicking it shows it on the map. Do not repeat addresses in your answer: name a few "
                "places if useful, and say their addresses are in the list below and they are ringed on the map. "
@@ -644,6 +651,8 @@ def _answer_question(q: Question):
                 answer_prompt += (" The data has no single median income for Silver Spring as a whole: "
                                   "give the range across its areas, and never present one area's value, "
                                   "the middle area or any average as Silver Spring's median.")
+        # Partial-year dates come from the source catalog, so they may be said.
+        trend_numbers = {float(n) for n in re.findall(r"\d+", (trend or {}).get("note") or "")}
         operands =_returned_numbers(rows) | _returned_numbers(display_rows) | set(total_values)
         last_sections = None
         calculations = []
@@ -656,7 +665,7 @@ def _answer_question(q: Question):
                 break
             response, calculations = _apply_calculations(_plain_text(response), operands)
             computed = {c["result"] for c in calculations if "result" in c}
-            allowed_extra = set(total_values) | computed
+            allowed_extra = set(total_values) | computed | trend_numbers
             sections = re.split(r"\s*(?:\*\*)?\bnext steps?(?:\*\*)?\s*:\s*(?:\*\*)?\s*", response, maxsplit=1, flags=re.IGNORECASE)
             candidate = sections[0].strip()
             last_sections = sections
@@ -1220,7 +1229,112 @@ def _answer_statistic(rows):
     return {'value': value, 'label': _no_tract_words(_display_value('label', rows[0]['label']) if key == 'estimate' and rows[0].get('label') else _column_label(key))}
 
 
+_YEAR_COLUMN = re.compile(r"(?:^|_)(?:year|yr)$", re.I)
+_DATE_TEXT = re.compile(r"\d{4}-\d{2}-\d{2}")
+_MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+
+
+def _year_of(value):
+    if type(value) is int:
+        year = value
+    elif isinstance(value, str) and re.fullmatch(r"\d{4}", value.strip()):
+        year = int(value)
+    else:
+        return None
+    return year if 1900 <= year <= 2100 else None
+
+
+def _short_date(text):
+    year, month, day = (int(part) for part in text[:10].split("-"))
+    return f"{_MONTHS[month - 1]} {day}, {year}"
+
+
+def _partial_years(sql):
+    """Years a yearly count only partly covers, and why, from the source's own
+    first/last record dates and any date bounds written into the query.
+
+    A year that only has April-December, or January-November, looks like a
+    drop on a chart. Every date here comes from the database or the SQL."""
+    partial = {}
+    for source in used_sources(DATABASE_PATH, sql):
+        first, last = source.get("first_record"), source.get("last_record")
+        if first and _DATE_TEXT.match(first) and first[5:7] != "01":
+            partial.setdefault(int(first[:4]), f"records start {_short_date(first)}")
+        if last and _DATE_TEXT.match(last) and last[5:7] != "12":
+            partial.setdefault(int(last[:4]), f"records end {_short_date(last)}")
+    for op, date in re.findall(r"(>=|<=|>|<)\s*'(\d{4}-\d{2}-\d{2})'", sql or ""):
+        month_day = date[5:]
+        if op == ">=" and month_day != "01-01" or op == ">" and month_day != "12-31":
+            partial.setdefault(int(date[:4]), f"the question's range starts {_short_date(date)}")
+        if op == "<=" and month_day != "12-31" or op == "<" and month_day != "01-01":
+            partial.setdefault(int(date[:4]), f"the question's range ends {_short_date(date)}")
+    return partial
+
+
+def _trend_visual(sql, rows):
+    """One count per calendar year -> a line chart.
+
+    Only drawn for a single series: a year column, one count, and each year
+    once (a repeated year means several lines mixed together).
+    The points are the returned rows themselves; nothing is computed."""
+    if not rows or len(rows) > 60 or "tract_history" in (sql or "").lower():
+        return None
+    columns = [key for key in rows[0] if key not in _HIDDEN_FIELDS and "geoid" not in key.lower()]
+    year_columns = [key for key in columns if _YEAR_COLUMN.search(key)]
+    if len(year_columns) != 1:
+        return None
+    year_column = year_columns[0]
+
+    def numeric(value):
+        return type(value) in (int, float) and math.isfinite(value)
+
+    measures = [key for key in columns if key != year_column
+                and all(numeric(row.get(key)) or row.get(key) is None for row in rows)
+                and any(numeric(row.get(key)) for row in rows)]
+    counts = [key for key in measures if "count" in key.lower()]
+    if counts:
+        measure = counts[0]
+    elif len(measures) == 1:
+        measure = measures[0]
+    else:
+        return None
+    if _is_percentage(measure) or "income" in measure.lower():
+        return None
+
+    # Several series (thefts and assaults by year) repeat each year, which
+    # the duplicate check below rejects. A text column that only annotates
+    # each year ("partial year") is fine.
+    points = {}
+    for row in rows:
+        year, value = _year_of(row.get(year_column)), row.get(measure)
+        if year is None or not numeric(value):
+            continue          # undated rows; the answer notes already say so
+        if year in points or value < 0:
+            return None
+        points[year] = value
+    if len(points) < 3:
+        return None
+
+    partial = _partial_years(sql)
+    label = _no_tract_words(_column_label(measure))
+    shown = sorted(points)
+    partial_shown = [year for year in shown if year in partial]
+    note = " ".join(f"{year} is not a full year: {partial[year]}." for year in partial_shown) or None
+    return {
+        "kind": "line",
+        "title": f"{label} by year",
+        "measure": label,
+        "scale_max": max(points.values()),
+        "points": [{"label": str(year), "value": points[year], "display": _display_value(measure, points[year]),
+                    "partial": year in partial} for year in shown],
+        "note": note,
+    }
+
+
 def _answer_visual(sql, rows, listing_counts):
+    trend = _trend_visual(sql, rows)
+    if trend:
+        return trend
     if listing_counts and len(listing_counts) > 1 and any(value for _, value in listing_counts):
         return {
             "title": "Mapped listings by type",

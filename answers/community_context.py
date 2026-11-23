@@ -80,6 +80,10 @@ its totals to businesses. An absent map listing is not proof of no business.
 Crime has multiple rows per incident: COUNT(DISTINCT incident_id) counts distinct
 reported incidents; COUNT(*) counts rows/offenses. Always label which. Time
 series must expose the relevant date range and incomplete-year limitations.
+For change over time in dated records (crime, permits, pedestrian-struck),
+return one row per calendar year: a column named year, the count column, and
+MIN/MAX of the date for that year, ordered by year, with undated rows left out.
+Keep it to one count per year unless the question compares several kinds.
 Treat venue capacity as unverified source text; NULL is unknown, not zero.
 Do not make a statistical or causal recommendation from simple correlations.
 Always include source_url or join community_sources using source_id.

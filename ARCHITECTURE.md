@@ -183,6 +183,20 @@ replacing the output. See [the data pipeline](get_data/README.md).
 3. a place named in the question, matched longest-name-first
 4. fall back to all 19 Silver Spring tracts
 
+## Yearly trend chart
+
+When the returned rows are one count per calendar year (a `year` column,
+3+ years, each year once), `_trend_visual` turns them into `visual.kind =
+"line"` and the page draws it. The points are the returned rows; nothing is
+computed. The chart has no axis numbers, only the returned values for the
+highest and latest years, because a rounded axis step is a number the
+database didn't produce.
+
+Years a source only partly covers are marked from `community_sources`
+first/last record dates and from date bounds in the SQL (records ending
+Nov 19 make that year partial). The phrasing step is told which years are
+partial and sees all the yearly rows, not just the first 25.
+
 ---
 
 # Part 3 — Things we tried that don't work

@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Ask evidence-backed questions about Silver Spring, Maryland, and see the public data behind every answer.">
     <title>CivicLens — Explore Silver Spring</title>
-    <link rel="stylesheet" href="style.css?v=arwa-fixes-1">
+    <link rel="stylesheet" href="style.css?v=trends-1">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <!-- Light/dark theme (Aryan): applied before first paint, browser-only. -->
     <script src="theme.js?v=places-theme-1"></script>
-    <link rel="stylesheet" href="theme.css?v=arwa-fixes-1">
+    <link rel="stylesheet" href="theme.css?v=trends-1">
 </head>
 <body class="app-page">
     <header class="app-header">
@@ -59,6 +59,9 @@
                     <figure id="answerVisual" class="answer-visual" hidden>
                         <figcaption id="answerVisualTitle"></figcaption>
                         <ul id="answerVisualItems"></ul>
+                        <p id="answerTrendReadout" class="answer-trend-readout" aria-live="polite" hidden></p>
+                        <div id="answerTrendChart" class="answer-trend-chart" hidden></div>
+                        <p id="answerVisualNote" class="answer-visual-note" hidden></p>
                     </figure>
                     <section id="answerPlaces" class="answer-places" hidden aria-labelledby="answerPlacesHeading">
                         <div class="answer-places-top">
@@ -104,6 +107,7 @@
                 <button type="button" data-question="How many restaurants are in Fenton Village?">How many restaurants are in Fenton Village? <span aria-hidden="true">&#x2197;&#xFE0E;</span></button>
                 <button type="button" data-question="We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here?">We want to host an e-commerce panel. What should we keep in mind? Do we have data on people who work in retail around here? <span aria-hidden="true">&#x2197;&#xFE0E;</span></button>
                 <button type="button" data-question="How many people who identify as female live in Silver Spring?">How many people who identify as female live in Silver Spring? <span aria-hidden="true">&#x2197;&#xFE0E;</span></button>
+                <button type="button" data-question="Are building permits in Fenton Village going up?">Are building permits in Fenton Village going up? <span aria-hidden="true">&#x2197;&#xFE0E;</span></button>
             </div>
             </section>
 
@@ -152,6 +156,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=arwa-fixes-1"></script>
+    <script src="script.js?v=trends-1"></script>
 </body>
 </html>
