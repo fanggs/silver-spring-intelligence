@@ -10,6 +10,56 @@ import sqlite3
 from pathlib import Path
 
 
+# Fixed crime groupings, so "theft" means the same categories every time it is
+# asked. These are the FBI's own NIBRS groups, which is where the county's
+# category names come from.
+CRIME_GROUPS = {
+    "theft": {
+        "label": "Larceny/theft offenses (FBI NIBRS group)",
+        "categories": ("All other Larceny", "From Coin/Operated Machine or Device", "Pocket/picking",
+                       "Purse-snatching", "Shoplifting", "Theft From Motor Vehicle", "Theft from Building",
+                       "Theft of Motor Vehicle Parts or Accessories"),
+        "note": ("Theft here means the FBI's larceny/theft offenses: shoplifting, theft from cars and "
+                 "buildings, car parts, pickpocketing, purse-snatching, coin machines and other larceny. "
+                 "Motor vehicle theft, robbery, burglary and identity theft are separate categories."),
+    },
+    "violent": {
+        "label": "Violent crime (FBI definition)",
+        "categories": ("Aggravated Assault", "Forcible Rape", "Murder and Nonnegligent Manslaughter", "Robbery"),
+        "note": ("Violent crime here follows the FBI definition: murder, rape, robbery and aggravated "
+                 "assault. Simple assault is not included."),
+    },
+}
+
+
+def crime_group(sql):
+    """The fixed group a query used, if its literals include that whole group."""
+    if "community_crime" not in (sql or ""):
+        return None
+    literals = set(re.findall(r"'([^']*)'", sql))
+    for key, group in CRIME_GROUPS.items():
+        if set(group["categories"]) <= literals:
+            return key
+    return None
+
+
+def crime_definitions():
+    lines = ["CRIME DEFINITIONS ARE FIXED. For community_crime, use exactly these category",
+             "lists, never your own LIKE patterns, so the same question always counts the",
+             "same offenses:"]
+    for key, group in CRIME_GROUPS.items():
+        listed = ", ".join("'" + c + "'" for c in group["categories"])
+        lines.append(f"- {key}: category IN ({listed}); label it '{group['label']}'")
+    lines += [
+        '"Theft", "thefts", "stealing" and "larceny" mean the theft list. Car or vehicle',
+        "theft means category = 'Motor Vehicle Theft'; car break-ins mean 'Theft From",
+        "Motor Vehicle'. Burglary, robbery and identity theft are their own categories:",
+        "use them only when the question names them. \"Violent crime\" means the violent",
+        "list; \"property crime\" means against = 'Property'.",
+    ]
+    return "\n".join(lines)
+
+
 def connect(path):
     con = sqlite3.connect(Path(path).resolve().as_uri()+'?mode=ro', uri=True)
     con.row_factory = sqlite3.Row
@@ -45,6 +95,7 @@ def schema_context(path):
                 parts.append('Dated records: '+source['first_record']+' through '+source['last_record']+'. Some rows may be undated.')
         names = [r[0] for r in con.execute('SELECT DISTINCT name FROM places ORDER BY name')]
         parts.append('Known named places in places: '+json.dumps(names))
+    parts.append(crime_definitions())
     parts.append('''
 Use these tables whenever their fields can answer the question. Counts, lists,
 rankings, combinations, comparisons, and rephrased questions are all permitted.
