@@ -113,7 +113,8 @@ def report(run, previous=None):
              f"Runner checkout: {json.dumps(run['runner_checkout'])}", "",
              "Automated statuses check response structure only. They do not prove numerical "
              "grounding, correctness, a good recommendation, or mobile usability.", "",
-             f"Health: {run['health']['status']}", "",
+             f"Health: {run['health']['status']}, API commit "
+             f"{(run['health'].get('response') or {}).get('commit', 'unknown') if isinstance(run['health'].get('response'), dict) else 'unknown'}", "",
              "| Question | Status | HTTP | Seconds |", "|---|---|---|---|"]
     for r in run["results"]:
         lines.append(f"| {r['id']} | {r['status']} | {r['http_status']} | {r['elapsed_seconds']} |")
@@ -205,6 +206,11 @@ def main(argv=None):
         health["status"] = "ok" if health["http_status"] == 200 and isinstance(payload, dict) \
             and payload.get("ok") is True else "error"
         run["health"] = health
+        served = payload.get("commit") if isinstance(payload, dict) else None
+        print(f"API is running commit {served or 'unknown'}", flush=True)
+        if served and args.release and not (args.release.startswith(served) or served.startswith(args.release)):
+            print(f"  WARNING: testing release {args.release}, but the API is still on {served}. "
+                  "Wait for the deploy to finish, then rerun.", flush=True)
         save(run, directory, previous)
         for question in questions:
             print(f"Asking {question['id']}...", flush=True)
