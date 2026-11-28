@@ -627,13 +627,27 @@ html{scroll-behavior:auto;}
 /* The page you're on: filled, so the menu shows where you are. */
 .feedback-link[aria-current="page"]{background:var(--forest-light);color:var(--white);}
 [data-theme="dark"] .feedback-link[aria-current="page"]{background:var(--lime);color:#152019;}
-/* Phones: the pinned menu stays one short row (scrolls sideways if needed)
-   so it doesn't cover much of the screen. Buttons stay 40px tall to tap. */
+/* Menu buttons: all the same size, same outline, on every page.
+   The theme toggle is a sun/moon icon styled like the links. */
+.nav-short{display:none;}
+.app-header .header-actions{display:grid;grid-template-columns:repeat(4,128px);gap:10px;}
+.app-header .feedback-link,.app-header .theme-toggle{box-sizing:border-box;width:100%;min-height:44px;padding:8px 10px;justify-content:center;
+  display:inline-flex;align-items:center;gap:6px;border:1px solid var(--forest-light);border-radius:100px;background:transparent;
+  color:var(--forest-light);font-size:12px;font-weight:700;white-space:nowrap;text-decoration:none;cursor:pointer;}
+.app-header .theme-toggle[hidden]{display:inline-flex;visibility:hidden;}
+.app-header .feedback-link:hover,.app-header .theme-toggle:hover{background:var(--forest-light);color:var(--white);}
+.app-header .feedback-link[aria-current="page"]{background:var(--forest-light);color:var(--white);}
+[data-theme="dark"] .app-header .feedback-link,[data-theme="dark"] .app-header .theme-toggle{border-color:var(--lime);color:var(--lime);background:transparent;}
+[data-theme="dark"] .app-header .feedback-link:hover,[data-theme="dark"] .app-header .theme-toggle:hover,
+[data-theme="dark"] .app-header .feedback-link[aria-current="page"]{background:var(--lime);color:#152019;}
+/* Phones: one row of four equal buttons with short labels. */
 @media (max-width:760px){
-.app-header{row-gap:6px;padding-top:8px;padding-bottom:8px;}
-.app-header .header-actions{flex-wrap:nowrap;overflow-x:auto;width:100%;gap:8px;scrollbar-width:none;}
-.app-header .header-actions::-webkit-scrollbar{display:none;}
-.app-header .feedback-link,.app-header .theme-toggle{min-height:40px;padding:8px 12px;flex:0 0 auto;}
+.app-header{row-gap:8px;padding-top:8px;padding-bottom:8px;}
+.app-header .header-actions{width:100%;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+.app-header .feedback-link,.app-header .theme-toggle{min-height:40px;padding:6px 4px;}
+.nav-full{display:none;}
+.nav-short{display:inline;}
+}
 }
 
 /* Places list starts closed so long answers stay short (Arwa, Nov 18). */
