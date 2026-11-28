@@ -631,12 +631,14 @@ html{scroll-behavior:auto;}
 #answerPlacesToggle { margin-top: 8px; }
 #answerPlacesToggle[hidden] { display: none; }
 
-/* About page */
-.about-body{max-width:680px;padding:8px 0 64px;font-size:16px;line-height:1.6;}
+/* About page: one centered column, headings in the site's own type */
+.about-page .app-intro{justify-content:center;text-align:center;}
+.about-page .app-intro > div{margin:0 auto;}
+.about-body{max-width:680px;margin:0 auto;padding:8px 0 64px;font-size:16px;line-height:1.6;text-align:center;}
 .about-body p{margin:0 0 16px;}
-.about-body h2{margin:32px 0 10px;font-family:Georgia,"Times New Roman",serif;font-size:22px;font-weight:400;}
+.about-body h2{margin:36px 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;letter-spacing:-0.88px;line-height:1.1;}
 .about-body a{color:var(--forest-light);font-weight:700;}
-.about-links{margin:0 0 24px;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:12px;}
+.about-links{margin:0 0 24px;padding:0;list-style:none;display:flex;flex-wrap:wrap;justify-content:center;gap:12px;}
 .about-links a,.about-back{display:inline-flex;min-height:44px;padding:10px 16px;align-items:center;gap:6px;border:1px solid var(--forest-light);border-radius:100px;text-decoration:none;}
 [data-theme="dark"] .about-body a{color:var(--lime);}
 [data-theme="dark"] .about-links a,[data-theme="dark"] .about-back{border-color:var(--lime);}
