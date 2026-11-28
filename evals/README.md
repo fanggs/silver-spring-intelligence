@@ -78,3 +78,10 @@ To verify the harness without model calls:
 ```bash
 python3 -m unittest discover -s evals -p 'test_*.py' -v
 ```
+
+## Speed and quality questions
+
+`speed_questions.json` holds 16 more questions across business owners,
+county staff and students, written before the Nov 27 speed work and not used
+for tuning. Use them with Yao's four to time each stage of an answer and to
+compare answer quality before and after a model, effort or prompt change.

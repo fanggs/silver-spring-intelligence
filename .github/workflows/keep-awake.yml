@@ -1,0 +1,35 @@
+# Keep the API awake. Free: public repo minutes, no model calls.
+#
+# Render's free web service sleeps after 15 minutes with no requests, and
+# waking it takes about 45 seconds before a question even starts (measured
+# Nov 27). Calling /health every 10 minutes keeps it awake. One always-on
+# free service uses about 720 of the account's 750 free instance hours a
+# month, so this fits only while the API is the account's one free web
+# service. Moving to a paid plan or a host with "always on" makes this
+# workflow unnecessary: delete it then.
+#
+# GitHub may start scheduled runs a few minutes late, and turns schedules
+# off in a repository with no commits for 60 days (the weekly data refresh
+# commits, so that shouldn't happen).
+name: Keep API awake
+
+on:
+  schedule:
+    - cron: "3,13,23,33,43,53 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: keep-awake
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call /health
+        run: |
+          curl --silent --show-error --fail --max-time 120 --retry 2 --retry-delay 10 \
+            https://civiclens-api-ack0.onrender.com/health

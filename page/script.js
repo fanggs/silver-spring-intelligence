@@ -1447,14 +1447,18 @@ function initAppPage() {
         }
     }
 
-    // An answer takes about 5-15 seconds (two model calls and a number
-    // check), longer if the server was asleep, so questions get more time
-    // than map layers.
-    const ASK_TIMEOUT_MS = 90000;
+    // An answer takes about 5-20 seconds (two model calls and a number
+    // check). The free server sleeps when idle and takes up to a minute to
+    // start, so a question allows for both.
+    const ASK_TIMEOUT_MS = 120000;
+    // A warm server starts the stream at once. No reply after this long
+    // means it is starting up, and the page says so.
+    const WAKING_AFTER_MS = 3000;
     const ASK_STAGES = {
+        waking: "Starting the server. It sleeps when no one has used it for a while, so this first answer can take up to a minute longer…",
         query: "Finding the right data…",
         database: "Looking it up…",
-        answer: "Writing the answer and checking every number…",
+        answer: "Found the data. Writing the answer and checking every number…",
         repair: "Fixing the lookup and trying again…",
         rewrite: "Rewriting so every number matches the data…"
     };
@@ -1469,12 +1473,13 @@ function initAppPage() {
         };
         const controller = new AbortController();
         const timer = window.setTimeout(() => controller.abort(), ASK_TIMEOUT_MS);
+        const waking = window.setTimeout(() => onStage("waking"), WAKING_AFTER_MS);
         try {
             const response = await fetch(`${API_BASE_URL}/ask/stream`, {
                 ...options,
                 headers: { ...options.headers, Accept: "application/x-ndjson" },
                 signal: controller.signal
-            });
+            }).finally(() => window.clearTimeout(waking));
             if (response.status === 404 || response.status === 405) {
                 return await requestJson("/ask", options, ASK_TIMEOUT_MS);
             }
@@ -1494,7 +1499,7 @@ function initAppPage() {
                     const event = JSON.parse(line);
                     if (event.result) return event.result;
                     if (event.error) throw new Error(event.error);
-                    if (event.stage) onStage(event.stage);
+                    if (event.stage) onStage(event.stage, event.preview);
                 }
                 if (done) throw new Error("/ask/stream ended without an answer");
             }
@@ -1543,12 +1548,20 @@ function initAppPage() {
         }).observe(el);
     }
 
+    // Map layers wait as long as a cold start takes, and say why meanwhile.
+    const LAYER_TIMEOUT_MS = 90000;
+
     async function loadLayers() {
+        const starting = window.setTimeout(() => {
+            ui.layerStatus.hidden = false;
+            ui.layerStatus.textContent = "Starting the server (it sleeps when idle). The map data will appear in about a minute.";
+        }, WAKING_AFTER_MS);
         const [tracts, businesses, boundary] = await Promise.allSettled([
-            requestJson("/tracts"),
-            requestJson("/businesses"),
-            requestJson("/boundary")
+            requestJson("/tracts", {}, LAYER_TIMEOUT_MS),
+            requestJson("/businesses", {}, LAYER_TIMEOUT_MS),
+            requestJson("/boundary", {}, LAYER_TIMEOUT_MS)
         ]);
+        window.clearTimeout(starting);
 
         const bothNetworkFailures =
             tracts.status === "rejected" &&
@@ -1662,8 +1675,17 @@ function initAppPage() {
             if (demoMode) {
                 renderAnswer(demoAnswer);
             } else {
-                const payload = await askQuestion(question, stage => {
+                const payload = await askQuestion(question, (stage, preview) => {
                     if (ASK_STAGES[stage]) showMessage(ASK_STAGES[stage]);
+                    // The data is back before the answer is written: light up
+                    // the areas it covers now. Tract ids only, no figures.
+                    if (preview && Array.isArray(preview.highlight_geoids)) {
+                        activeGeoids = new Set(preview.highlight_geoids.map(String));
+                        highlightScope = ["area", "boundary", "none"].includes(preview.highlight_scope)
+                            ? preview.highlight_scope : "selection";
+                        updateHighlights();
+                        refreshLegendForSelection();
+                    }
                 });
 
                 renderAnswer(payload);
