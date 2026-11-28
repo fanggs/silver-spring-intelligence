@@ -234,6 +234,15 @@ sees all their rows, and the number check accepts a figure only if it is in
 one of them. Principle 1 is unchanged: every number still comes out of the
 database in that request. Each evidence table is shown under the answer.
 
+Comparisons are fair by construction (Nov 27): a rate divides a count by the
+population of the same tracts it counted; a district inside Silver Spring is
+compared with the *rest* of Silver Spring, not the whole that contains it;
+rates use one unit per answer (per 1,000, or per 10,000 when smaller), so none
+rounds to 0; and the answer compares areas of different size by rate, never
+by raw count. Measured on 10 comparison questions, twice: mismatched
+denominators 2 -> 0; blind judge query 3.0-3.1 -> 3.6-4.0, insight
+2.7-2.8 -> 3.1-3.3; the 20 general questions unchanged.
+
 Context tables, built by `get_data/fetch_insights.py` and registered in
 `insight_sources` (same columns as `community_sources`, so the prompt
 describes them automatically; guidance in `answers/insight_context.py`):

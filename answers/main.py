@@ -127,13 +127,14 @@ SQL_EFFORT, SQL_MAX_TOKENS = os.getenv("CIVICLENS_SQL_EFFORT") or "medium", 8000
 ANSWER_EFFORT, ANSWER_MAX_TOKENS = os.getenv("CIVICLENS_ANSWER_EFFORT") or "medium", 4000
 
 # Time limits, so one slow model call can't turn into a minutes-long wait.
-# A query step has taken at most ~21 s and a writing step ~10 s in testing.
+# A query step has taken at most ~24 s and a writing step ~10 s in testing.
+# A repair cutoff of 20 s turned a fixable query into a refusal, so it is 30.
 # A second try only starts early enough to finish: a query repair within
 # REPAIR_DEADLINE seconds of the question, a number-check rewrite within
 # REWRITE_DEADLINE. Otherwise the first draft is used, with any sentence
 # whose numbers fail the check removed, as before.
 SQL_TIMEOUT, ANSWER_TIMEOUT = 40.0, 25.0
-REPAIR_DEADLINE, REWRITE_DEADLINE = 20.0, 30.0
+REPAIR_DEADLINE, REWRITE_DEADLINE = 30.0, 30.0
 
 
 def _ask_claude(prompt: str, max_tokens: int = 700, *, effort: str | None = None,
@@ -631,7 +632,11 @@ def _answer_question(q: Question):
             "about related types. Give the mapped count and leave any rating of competition "
             "out unless the results include a meaningful benchmark. Describe map results "
             "as mapped listings. Counts alone cannot establish demand, "
-            "foot traffic, event interest, or whether a business is open. Do not call counts a proxy for those measures, even if a returned label does. Income and renter share "
+            "foot traffic, event interest, or whether a business is open. Do not call counts a proxy for those measures, even if a returned label does. "
+            "Compare areas of different size by the returned rates or shares, never by raw counts: do "
+            "not call one area's count more, fewer, higher or lower than the count for a bigger area or "
+            "for an area that contains it. If no rate is returned, give each count without saying "
+            "which is more. Income and renter share "
             "do not establish housing prices. Put boundary and source caveats only in the separate notes. "
             "Those notes describe the source datasets, not these rows: never call a "
             "returned count countywide or unfiltered because a note mentions the source coverage. "
