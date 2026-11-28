@@ -630,11 +630,13 @@ html{scroll-behavior:auto;}
 /* Menu buttons: all the same size, same outline, on every page.
    The theme toggle is a sun/moon icon styled like the links. */
 .nav-short{display:none;}
-.app-header .header-actions{display:grid;grid-template-columns:repeat(4,128px);gap:10px;}
+.app-header .header-actions{display:grid;grid-template-columns:repeat(3,128px) 44px;gap:10px;align-items:center;}
 .app-header .feedback-link,.app-header .theme-toggle{box-sizing:border-box;width:100%;min-height:44px;padding:8px 10px;justify-content:center;
   display:inline-flex;align-items:center;gap:6px;border:1px solid var(--forest-light);border-radius:100px;background:transparent;
   color:var(--forest-light);font-size:12px;font-weight:700;white-space:nowrap;text-decoration:none;cursor:pointer;}
 .app-header .theme-toggle[hidden]{display:inline-flex;visibility:hidden;}
+/* The theme toggle is a round icon button, as tall as the others. */
+.app-header .theme-toggle{width:44px;height:44px;padding:0;border-radius:50%;}
 .app-header .feedback-link:hover,.app-header .theme-toggle:hover{background:var(--forest-light);color:var(--white);}
 .app-header .feedback-link[aria-current="page"]{background:var(--forest-light);color:var(--white);}
 [data-theme="dark"] .app-header .feedback-link,[data-theme="dark"] .app-header .theme-toggle{border-color:var(--lime);color:var(--lime);background:transparent;}
@@ -643,7 +645,8 @@ html{scroll-behavior:auto;}
 /* Phones: one row of four equal buttons with short labels. */
 @media (max-width:760px){
 .app-header{row-gap:8px;padding-top:8px;padding-bottom:8px;}
-.app-header .header-actions{width:100%;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+.app-header .header-actions{width:100%;grid-template-columns:repeat(3,minmax(0,1fr)) 40px;gap:8px;}
+.app-header .theme-toggle{width:40px;height:40px;min-height:40px;padding:0;}
 .app-header .feedback-link,.app-header .theme-toggle{min-height:40px;padding:6px 4px;}
 .nav-full{display:none;}
 .nav-short{display:inline;}
