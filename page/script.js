@@ -1454,6 +1454,7 @@ function initAppPage() {
     // A warm server starts the stream at once. No reply after this long
     // means it is starting up, and the page says so.
     const WAKING_AFTER_MS = 3000;
+    const PENDING_SUMMARY = "Here is the data. Writing a short summary and checking every number against it…";
     const ASK_STAGES = {
         waking: "Starting the server. It sleeps when no one has used it for a while, so this first answer can take up to a minute longer…",
         query: "Finding the right data…",
@@ -1675,23 +1676,32 @@ function initAppPage() {
             if (demoMode) {
                 renderAnswer(demoAnswer);
             } else {
+                let previewShown = false;
                 const payload = await askQuestion(question, (stage, preview) => {
-                    if (ASK_STAGES[stage]) showMessage(ASK_STAGES[stage]);
-                    // The data is back before the answer is written: light up
-                    // the areas it covers now. Tract ids only, no figures.
-                    if (preview && Array.isArray(preview.highlight_geoids)) {
-                        activeGeoids = new Set(preview.highlight_geoids.map(String));
-                        highlightScope = ["area", "boundary", "none"].includes(preview.highlight_scope)
-                            ? preview.highlight_scope : "selection";
-                        updateHighlights();
-                        refreshLegendForSelection();
+                    // The data is back before the sentence is written: show
+                    // the map, chart and tables now. The preview carries no
+                    // written answer, only what code built from the rows.
+                    if (preview && typeof preview === "object" && Array.isArray(preview.rows)) {
+                        renderAnswer({ ...preview, summary: PENDING_SUMMARY, next_step: null });
+                        ui.answer.classList.add("is-pending");
+                        // Open the data so it is visible while waiting; the
+                        // finished answer folds it away again as usual.
+                        ui.details.open = true;
+                        previewShown = true;
+                        return;
                     }
+                    if (previewShown) {
+                        if (stage === "rewrite") ui.answer.textContent = ASK_STAGES.rewrite;
+                        return;
+                    }
+                    if (ASK_STAGES[stage]) showMessage(ASK_STAGES[stage]);
                 });
-
+                ui.answer.classList.remove("is-pending");
                 renderAnswer(payload);
             }
         } catch (error) {
             console.warn("CivicLens answer request failed:", error);
+            ui.answer.classList.remove("is-pending");
             showMessage(
                 `The server could not answer this question right now. ${SCOPE_MESSAGE}`,
                 true

@@ -87,52 +87,17 @@ app.add_middleware(
 # Only on the deployed service (Render sets RENDER=true), never in tests.
 
 KEEP_AWAKE_SECONDS = 600     # Render's free plan sleeps after 15 idle minutes
-WARM_EVERY_SECONDS = 3600      # re-answers only questions whose cached answer expired
-PAGE_PATH = PROJECT_ROOT / "page" / "index.html"
-
-
-def _page_questions():
-    """The example questions the page offers, read from the page itself, so
-    the list stays whatever the page shows."""
-    try:
-        html = PAGE_PATH.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    import html as html_lib
-    return list(dict.fromkeys(html_lib.unescape(q) for q in re.findall(r'data-question="([^"]+)"', html)))
-
-
-def _warm_answers():
-    """Answer the page's example questions ahead of time, so a visitor who
-    clicks one gets it at once. Same pipeline, same checks, same cache an
-    asked question uses; skipped for a question already cached."""
-    for question in _page_questions():
-        q = Question(question=question)
-        key = _cache_key(q)
-        if key is None or answer_cache.get(key) is not None:
-            continue
-        try:
-            answer_cache.put(key, _answer_question(q))
-        except Exception as exc:
-            print(f"CIVICLENS_WARM_ERROR {type(exc).__name__}: {exc}", flush=True)
-
-
 def _background():
-    """Keep the free server awake by calling its own public address (Render
-    counts that as a visit), and keep the example answers warm."""
+    """Keep the free server awake by calling its own public address every
+    10 minutes; Render counts that as a visit."""
     import urllib.request
     url = (os.getenv("RENDER_EXTERNAL_URL") or "").rstrip("/")
-    last_warm = 0.0
-    while True:
-        if time.monotonic() - last_warm > WARM_EVERY_SECONDS or last_warm == 0.0:
-            _warm_answers()
-            last_warm = time.monotonic()
+    while url:
         time.sleep(KEEP_AWAKE_SECONDS)
-        if url:
-            try:
-                urllib.request.urlopen(f"{url}/health", timeout=30).read()
-            except Exception as exc:
-                print(f"CIVICLENS_KEEP_AWAKE_ERROR {type(exc).__name__}: {exc}", flush=True)
+        try:
+            urllib.request.urlopen(f"{url}/health", timeout=30).read()
+        except Exception as exc:
+            print(f"CIVICLENS_KEEP_AWAKE_ERROR {type(exc).__name__}: {exc}", flush=True)
 
 
 @app.on_event("startup")
@@ -773,11 +738,13 @@ def _answer_question(q: Question):
         calculations = []
         for attempt in range(2):
             if attempt == 0:
-                # The data is in: light up the map now rather than after the
-                # answer is written. Tract ids only; no figures.
-                preview_geoids, preview_scope, _ = _map_selection(question, executed_sql, rows)
-                _progress("answer", preview={"highlight_geoids": preview_geoids,
-                                             "highlight_scope": preview_scope})
+                # The data is in: send everything code builds from the rows
+                # (map, chart, tables, sources) now, so the page shows it
+                # while the sentence is written. The preview has no summary:
+                # every number in it is a database value, as in the answer.
+                _progress("answer", preview=_result(
+                    question, executed_sql, rows, locations, listing_counts, evidence,
+                    [_no_tract_words(note) for note in notes], citable_sql, None, None, []))
             else:
                 _progress("rewrite")
             try:
@@ -829,9 +796,6 @@ def _answer_question(q: Question):
             _log_gap(question, "dropped_next_step", next_step, executed_sql)
             next_step = None
 
-    _table, _headers = _to_label_value(rows)
-    highlights, scope, geography = _map_selection(question, executed_sql, rows)
-
     cleaned = _no_meta_sentences(summary)
     if cleaned != summary:
         _log_gap(question, "dropped_meta", {"before": summary, "after": cleaned}, executed_sql)
@@ -839,6 +803,17 @@ def _answer_question(q: Question):
     summary = _anchor_dangling_start(summary, rows)
     summary, next_step = _no_tract_words(summary), _no_tract_words(next_step)
     notes = [_no_tract_words(note) for note in notes]
+    return _result(question, executed_sql, rows, locations, listing_counts, evidence, notes,
+                   citable_sql, summary, next_step, calculations)
+
+
+def _result(question, executed_sql, rows, locations, listing_counts, evidence, notes,
+            citable_sql, summary, next_step, calculations):
+    """What /ask returns. Everything except the summary and next step is
+    built by code from the returned rows, so the page can show it as soon as
+    the data is back (see the "answer" step in /ask/stream)."""
+    _table, _headers = _to_label_value(rows)
+    highlights, scope, geography = _map_selection(question, executed_sql, rows)
     return {
         "answer": " ".join(filter(None, (summary, next_step, *notes))),
         "summary": summary,
