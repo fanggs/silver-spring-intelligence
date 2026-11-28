@@ -624,7 +624,10 @@ html{scroll-behavior:auto;}
 [data-theme="dark"] .feedback-link:hover{background:var(--lime);color:#152019;}
 .answer-feedback{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--border);color:var(--muted);font-size:14px;}
 .answer-feedback a{color:inherit;font-weight:700;text-decoration:underline;text-underline-offset:3px;}
-@media (max-width:760px){.feedback-link{padding:10px 12px;}}
+/* The page you're on: filled, so the menu shows where you are. */
+.feedback-link[aria-current="page"]{background:var(--forest-light);color:var(--white);}
+[data-theme="dark"] .feedback-link[aria-current="page"]{background:var(--lime);color:#152019;}
+@media (max-width:760px){.feedback-link{padding:10px 12px;}.app-header .header-actions{flex-wrap:wrap;row-gap:8px;}}
 
 /* Places list starts closed so long answers stay short (Arwa, Nov 18). */
 .answer-places-body[hidden] { display: none; }
