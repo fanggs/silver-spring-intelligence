@@ -160,10 +160,20 @@ The frontend selects the local API on port 8000 when served on localhost.
 The public frontend uses the Render URL configured in `page/script.js`.
 
 Free-tier API sleeps after 15 minutes idle and takes ~45 seconds to wake
-(measured Nov 27). `.github/workflows/keep-awake.yml` calls `/health` every
-10 minutes so it doesn't sleep; one always-on free service uses ~720 of the
-account's 750 free hours a month. A paid plan or an always-on host makes that
-workflow unnecessary. If the server is asleep anyway, the page says it is
+(measured Nov 27). The API keeps itself awake: on Render (`RENDER=true`) a
+background thread calls its own public `/health` every 10 minutes, which
+Render counts as a visit. `.github/workflows/keep-awake.yml` does the same
+from outside as a backup, but GitHub ran none of its scheduled pings in the
+first hour, so it can't be relied on alone. One always-on free service uses
+~720 of the account's 750 free hours a month. A paid plan or an always-on
+host makes both unnecessary.
+
+**Answer cache.** Answers are kept for a day, keyed on the question, the
+model and the database file's identity, so a data refresh or deploy starts
+fresh. At startup, and hourly after, the same thread answers the example
+questions shown on the page (read from `page/index.html`) through the normal
+pipeline, so clicking one returns in milliseconds. Release checks send
+`Cache-Control: no-cache` and always run the full pipeline. If the server is asleep anyway, the page says it is
 starting instead of looking stuck, and waits up to 90 s for map layers and
 120 s for an answer.
 
@@ -280,6 +290,18 @@ either step saved 1-2 s and scored slightly lower in three blind rounds.
 the call that writes the sentence must see the rows, which don't exist until
 the query has run. Lookups that code can phrase (counts) already skip the
 second call.
+
+**Thinking off for the query step** (Nov 27) cut the typical answer from
+18 s to 7 s and gave wrong numbers: the female-population question returned
+the total population, violent crime was counted with no area filter. The
+query step needs its thinking.
+
+**Writing the main query and the evidence queries in two parallel calls**
+saved nothing: the evidence call does all the same thinking and takes as
+long as the original single call.
+
+**Prompt-cache misses are not a speed cost.** A miss on the ~24,800-token
+prompt starts within ~0.5-0.8 s, the same as a hit.
 
 **Streaming the answer text** would show sentences before the number check
 has passed them. The page shows each step and the map selection instead.

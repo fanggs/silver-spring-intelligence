@@ -83,6 +83,65 @@ app.add_middleware(
 )
 
 
+# ---------------------------------------------------------- background work
+# Only on the deployed service (Render sets RENDER=true), never in tests.
+
+KEEP_AWAKE_SECONDS = 600     # Render's free plan sleeps after 15 idle minutes
+WARM_EVERY_SECONDS = 3600      # re-answers only questions whose cached answer expired
+PAGE_PATH = PROJECT_ROOT / "page" / "index.html"
+
+
+def _page_questions():
+    """The example questions the page offers, read from the page itself, so
+    the list stays whatever the page shows."""
+    try:
+        html = PAGE_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    import html as html_lib
+    return list(dict.fromkeys(html_lib.unescape(q) for q in re.findall(r'data-question="([^"]+)"', html)))
+
+
+def _warm_answers():
+    """Answer the page's example questions ahead of time, so a visitor who
+    clicks one gets it at once. Same pipeline, same checks, same cache an
+    asked question uses; skipped for a question already cached."""
+    for question in _page_questions():
+        q = Question(question=question)
+        key = _cache_key(q)
+        if key is None or answer_cache.get(key) is not None:
+            continue
+        try:
+            answer_cache.put(key, _answer_question(q))
+        except Exception as exc:
+            print(f"CIVICLENS_WARM_ERROR {type(exc).__name__}: {exc}", flush=True)
+
+
+def _background():
+    """Keep the free server awake by calling its own public address (Render
+    counts that as a visit), and keep the example answers warm."""
+    import urllib.request
+    url = (os.getenv("RENDER_EXTERNAL_URL") or "").rstrip("/")
+    last_warm = 0.0
+    while True:
+        if time.monotonic() - last_warm > WARM_EVERY_SECONDS or last_warm == 0.0:
+            _warm_answers()
+            last_warm = time.monotonic()
+        time.sleep(KEEP_AWAKE_SECONDS)
+        if url:
+            try:
+                urllib.request.urlopen(f"{url}/health", timeout=30).read()
+            except Exception as exc:
+                print(f"CIVICLENS_KEEP_AWAKE_ERROR {type(exc).__name__}: {exc}", flush=True)
+
+
+@app.on_event("startup")
+def _start_background():
+    if os.getenv("RENDER") == "true" or os.getenv("CIVICLENS_BACKGROUND") == "1":
+        threading.Thread(target=copy_context().run, args=(_background,), daemon=True,
+                         name="civiclens-background").start()
+
+
 @app.middleware('http')
 async def measure_request(request, call_next):
     stages = []
