@@ -7,7 +7,10 @@ import time
 
 
 class AnswerCache:
-    def __init__(self, ttl=300, capacity=128):
+    # The key includes the database file's identity, so a data refresh (or a
+    # model change) makes every old entry unreachable. Within one snapshot an
+    # answer is kept for a day: a repeat question is answered instantly.
+    def __init__(self, ttl=86400, capacity=256):
         self.ttl, self.capacity = ttl, capacity
         self.entries = OrderedDict()
         self.lock = Lock()
