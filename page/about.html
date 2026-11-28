@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="About CivicLens, a tool by UX University that brings Silver Spring's open data into one place.">
     <title>About CivicLens</title>
-    <link rel="stylesheet" href="style.css?v=nav-1">
+    <link rel="stylesheet" href="style.css?v=about-3">
     <script src="theme.js?v=places-theme-1"></script>
     <link rel="stylesheet" href="theme.css?v=about-1">
 </head>
@@ -31,14 +31,62 @@
         </div>
 
         <section class="about-body">
-            <p>CivicLens is a tool built by <a href="https://uxuniversity.io" target="_blank" rel="noopener">UX University (UXU)</a> as an MVP for Silver Spring, Maryland. It brings open city and county data together in one easy-to-use place that anyone can use.</p>
-            <p>It is built mainly for small and medium businesses, entrepreneurs, people starting or serving businesses in the area, government workers, and anyone helping build their community.</p>
+            <p class="about-lead">CivicLens is a tool built by <a href="https://uxuniversity.io" target="_blank" rel="noopener">UX University (UXU)</a> as an MVP for Silver Spring, Maryland. It brings open city and county data together in one easy-to-use place that anyone can use: ask a question in plain English and get a short answer, the numbers behind it, and a map.</p>
 
-            <h2>How it answers</h2>
-            <p>Ask a question in plain English. CivicLens writes a database query, runs it against public data, and writes the answer from what comes back. Every number in an answer comes from that data, and each answer lists its sources and the exact query it ran, so you can check it.</p>
-            <p>The data includes Census estimates, jobs and business counts, county records such as permits, crashes and reported crime, and mapped businesses from OpenStreetMap.</p>
+            <div class="about-grid">
+                <article class="about-card">
+                    <h2>Who it's for</h2>
+                    <ul>
+                        <li>Small and medium businesses deciding where to open, grow or market</li>
+                        <li>Entrepreneurs and people starting or serving businesses in the area</li>
+                        <li>Government workers planning services, programs and outreach</li>
+                        <li>Anyone helping build their community, from nonprofits to students</li>
+                    </ul>
+                </article>
 
-            <h2>Learn more</h2>
+                <article class="about-card">
+                    <h2>What you can ask</h2>
+                    <ul>
+                        <li>Is a neighborhood a good fit for a kind of business?</li>
+                        <li>How many restaurants, gyms or salons are in an area?</li>
+                        <li>Who lives and works here: age, income, languages, jobs?</li>
+                        <li>Are permits, reported crime or crashes going up or down?</li>
+                        <li>How does an area compare with the rest of Silver Spring or the county?</li>
+                    </ul>
+                </article>
+
+                <article class="about-card">
+                    <h2>How it answers</h2>
+                    <ol>
+                        <li>CivicLens turns your question into a database query.</li>
+                        <li>The query runs read-only against public data.</li>
+                        <li>The answer is written only from what comes back. Code checks every number in it against the data before you see it.</li>
+                        <li>Each answer lists its sources and the exact query it ran, so you can check it yourself.</li>
+                    </ol>
+                </article>
+
+                <article class="about-card">
+                    <h2>Where the data comes from</h2>
+                    <ul>
+                        <li><strong>U.S. Census Bureau:</strong> American Community Survey estimates, jobs located in each area, and business counts by industry</li>
+                        <li><strong>Montgomery County open data:</strong> building permits, reported crime, traffic crashes, public parking, food business inspections, rents, alcohol licenses and Ride On bus stops</li>
+                        <li><strong>Montgomery Planning:</strong> approved development projects and plan areas</li>
+                        <li><strong>OpenStreetMap:</strong> mapped businesses, venues and transit stations</li>
+                    </ul>
+                </article>
+            </div>
+
+            <article class="about-card about-wide">
+                <h2>Good to know</h2>
+                <ul>
+                    <li>Neighborhoods are drawn from whole census areas, so their edges are approximate.</li>
+                    <li>OpenStreetMap listings are added by volunteers and may be incomplete or out of date.</li>
+                    <li>Census figures are survey estimates with margins of error. Census counts sex, not gender identity.</li>
+                    <li>If the data can't answer a question, CivicLens says so instead of guessing.</li>
+                </ul>
+            </article>
+
+            <h2 class="about-section-title">Learn more</h2>
             <ul class="about-links">
                 <li><a href="https://uxuniversity.io" target="_blank" rel="noopener">UX University <span aria-hidden="true">&#x2197;&#xFE0E;</span></a></li>
                 <li><a href="https://www.uxconference.org/" target="_blank" rel="noopener">UXCON <span aria-hidden="true">&#x2197;&#xFE0E;</span></a></li>
