@@ -99,6 +99,22 @@ question
 answer + sources + the SQL itself
 ```
 
+Where the time goes (Nov 27, 20 questions, warm server): the database takes
+milliseconds; the schema prompt (~24,500 tokens) is read from the prompt
+cache. Almost all of the wait is the model writing: the query step writes
+1,000-5,600 tokens (thinking plus SQL, 4-21 s) and the writing step
+400-2,000 (2-10 s). Typical answer ~11 s, slowest one in ten ~22 s.
+
+Time limits: the query call gets 40 s and the writing call 25 s. A repair
+only starts within 20 s of the question and a rewrite within 30 s;
+otherwise the first draft is used, with sentences whose numbers fail the
+check removed. This caps the worst case at about 85 seconds
+instead of four 60 s calls in a row.
+
+When the data is back and the answer still has to be written, `/ask/stream`
+sends the map selection (tract ids and a scope word, no figures) with the
+`answer` step, so the map lights up while the sentence is written.
+
 Two calls, with the database between them. The call that sees the question
 never sees a number; the call that writes the sentence only sees numbers the
 database produced.
@@ -143,9 +159,13 @@ Domain     uxucivic.com                              added, pending DNS
 The frontend selects the local API on port 8000 when served on localhost.
 The public frontend uses the Render URL configured in `page/script.js`.
 
-Free-tier API sleeps after 15 minutes idle and takes ~1 minute to wake. The
-static site never sleeps, so the page loads instantly and the map sits empty
-during the wake. Starter plan ($7/mo) removes this.
+Free-tier API sleeps after 15 minutes idle and takes ~45 seconds to wake
+(measured Nov 27). `.github/workflows/keep-awake.yml` calls `/health` every
+10 minutes so it doesn't sleep; one always-on free service uses ~720 of the
+account's 750 free hours a month. A paid plan or an always-on host makes that
+workflow unnecessary. If the server is asleep anyway, the page says it is
+starting instead of looking stuck, and waits up to 90 s for map layers and
+120 s for an answer.
 
 ## Data
 
@@ -240,6 +260,23 @@ These are loaded once, not by the weekly refresh. Rerun with
 # Part 3 — Things we tried that don't work
 
 Permanent. These cost hours; don't rediscover them.
+
+**Thinking off for the writing step is faster and wrong** (Nov 27). It cut
+the step from ~800 output tokens to ~180, but answers said things like
+"violent crime has risen, from 189 to 188" and opened with a misplaced
+"No:". The number check can't catch a wrong direction. Effort "low" for
+either step saved 1-2 s and scored slightly lower in three blind rounds.
+
+**Merging the two model calls is not possible** without breaking Principle 1:
+the call that writes the sentence must see the rows, which don't exist until
+the query has run. Lookups that code can phrase (counts) already skip the
+second call.
+
+**Streaming the answer text** would show sentences before the number check
+has passed them. The page shows each step and the map selection instead.
+
+**Shorthand for the 19 Silver Spring tract ids** (model writes one word, code
+expands it) cut query output by only ~8% and scored slightly lower; reverted.
 
 **ACS 2019 cannot be used for trends.** It predates the 2020 tract redraw, so
 geoids don't line up across it. 2016-2020 and 2020-2024 share boundaries.

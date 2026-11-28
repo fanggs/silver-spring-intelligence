@@ -1,0 +1,18 @@
+[
+  {"id": "s01", "audience": "business", "question": "Is downtown Silver Spring a good place to open a coffee shop?"},
+  {"id": "s02", "audience": "business", "question": "How many hair salons and barbershops are there in Silver Spring?"},
+  {"id": "s03", "audience": "business", "question": "What is the median household income in Takoma Park compared with the county?"},
+  {"id": "s04", "audience": "business", "question": "Would a daycare center do well in Long Branch?"},
+  {"id": "s05", "audience": "business", "question": "Where are the hotels in Silver Spring?"},
+  {"id": "s06", "audience": "county", "question": "Which parts of Silver Spring have the highest share of renters paying more than 30% of income on rent?"},
+  {"id": "s07", "audience": "county", "question": "How many pedestrians were struck in Silver Spring last year?"},
+  {"id": "s08", "audience": "county", "question": "Has reported violent crime in Silver Spring gone up or down since 2019?"},
+  {"id": "s09", "audience": "county", "question": "Where would a new food pantry help the most in Silver Spring?"},
+  {"id": "s10", "audience": "county", "question": "How many homes are approved but not yet built in the Silver Spring area?"},
+  {"id": "s11", "audience": "student", "question": "What languages are spoken at home in Silver Spring?"},
+  {"id": "s12", "audience": "student", "question": "How many people in Silver Spring don't have a car?"},
+  {"id": "s13", "audience": "student", "question": "What industries employ the most people who work in Silver Spring?"},
+  {"id": "s14", "audience": "student", "question": "Is Silver Spring getting younger or older?"},
+  {"id": "s15", "audience": "business", "question": "How much parking is there near Fenton Village?"},
+  {"id": "s16", "audience": "county", "question": "What's the weather tomorrow?"}
+]

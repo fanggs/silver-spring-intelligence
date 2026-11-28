@@ -68,10 +68,10 @@ stage_timings = ContextVar('stage_timings', default=None)
 progress_listener = ContextVar('progress_listener', default=None)
 
 
-def _progress(stage):
+def _progress(stage, **extra):
     listener = progress_listener.get()
     if listener is not None:
-        listener(stage)
+        listener({"stage": stage, **extra})
 
 app = FastAPI(title="CivicLens")
 app.add_middleware(
@@ -118,12 +118,27 @@ class ModelTruncated(RuntimeError):
 # is a ceiling, not a charge: only tokens actually used are billed.
 # Rechecked on Haiku 5.5: "low", or thinking turned off, answered faster but
 # counted crimes for the wrong area and lost the main number from answers.
-SQL_EFFORT, SQL_MAX_TOKENS = "medium", 8000
-ANSWER_EFFORT, ANSWER_MAX_TOKENS = "medium", 4000
+# Rechecked Nov 27 (20 questions, blind Opus judge, three rounds): "low" for
+# the writing step saves about 1.5 s typical and 4 s on the slowest answers,
+# and thinking off saves more, but both scored lower; thinking off also wrote
+# wrong directions ("rose from 189 to 188"). Both stay at "medium". The
+# environment variables allow a measured change without a code edit.
+SQL_EFFORT, SQL_MAX_TOKENS = os.getenv("CIVICLENS_SQL_EFFORT") or "medium", 8000
+ANSWER_EFFORT, ANSWER_MAX_TOKENS = os.getenv("CIVICLENS_ANSWER_EFFORT") or "medium", 4000
+
+# Time limits, so one slow model call can't turn into a minutes-long wait.
+# A query step has taken at most ~21 s and a writing step ~10 s in testing.
+# A second try only starts early enough to finish: a query repair within
+# REPAIR_DEADLINE seconds of the question, a number-check rewrite within
+# REWRITE_DEADLINE. Otherwise the first draft is used, with any sentence
+# whose numbers fail the check removed, as before.
+SQL_TIMEOUT, ANSWER_TIMEOUT = 40.0, 25.0
+REPAIR_DEADLINE, REWRITE_DEADLINE = 20.0, 30.0
 
 
 def _ask_claude(prompt: str, max_tokens: int = 700, *, effort: str | None = None,
-                cache_prefix: str | None = None, stage: str = "summary_model") -> str:
+                cache_prefix: str | None = None, stage: str = "summary_model",
+                timeout: float = 60.0) -> str:
     """One model call. Returns the text, or raises; never returns cut-off text.
 
     cache_prefix: a leading part of `prompt` that is identical on every
@@ -141,11 +156,16 @@ def _ask_claude(prompt: str, max_tokens: int = 700, *, effort: str | None = None
     if cache_prefix and prompt.startswith(cache_prefix) and len(prompt) > len(cache_prefix):
         content = [{"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
                    {"type": "text", "text": prompt[len(cache_prefix):]}]
-    options = {"output_config": {"effort": effort}} if effort else {}
+    if effort == "off":
+        # No thinking at all: the model writes the answer straight away.
+        options = {"thinking": {"type": "disabled"}}
+    else:
+        options = {"output_config": {"effort": effort}} if effort else {}
     started = time.perf_counter()
     try:
         resp = client.messages.create(
             model=MODEL,
+            timeout=timeout,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": content}],
             **options,
@@ -383,7 +403,7 @@ def ask_stream(q: Question, request: Request = None):
     events = queue.Queue()
 
     def work():
-        progress_listener.set(lambda stage: events.put({"stage": stage}))
+        progress_listener.set(events.put)
         try:
             result = _answer_question(q)
             if key is not None:
@@ -415,6 +435,7 @@ def _answer_question(q: Question):
     question = q.question.strip()
     if not question:
         return _cannot("Please ask a question.")
+    started = time.perf_counter()
 
     # 1. Claude writes the query. It never writes the numbers.
     # The database description is the same on every request, so it leads the
@@ -434,7 +455,7 @@ def _answer_question(q: Question):
     _progress("query")
     try:
         sql = _ask_claude(sql_prompt, max_tokens=SQL_MAX_TOKENS, effort=SQL_EFFORT,
-                          cache_prefix=schema_prefix, stage="query_model")
+                          cache_prefix=schema_prefix, stage="query_model", timeout=SQL_TIMEOUT)
     except ModelNotConfigured:
         return _cannot("AI answers are not configured. The data is available, but an administrator must configure the model key before questions can run.")
     except ModelTruncated:
@@ -473,14 +494,15 @@ def _answer_question(q: Question):
             # not have) gets one repair: the model sees the error and fixes
             # it. A second failure is reported as before.
             _log_gap(question, "query_error" if attempt else "query_error_repairing", str(exc), sql)
-            if attempt:
+            if attempt or time.perf_counter() - started > REPAIR_DEADLINE:
                 return _cannot("I couldn't retrieve the requested information. Please try a more specific question; this does not establish a data gap.", sql=sql)
             _progress("repair")
             try:
                 sql = _ask_claude(sql_prompt + f"\n\nThis query failed in SQLite with the error "
                                   f"\"{exc}\":\n{sql}\nWrite a corrected query. Output only the SQL.",
                                   max_tokens=SQL_MAX_TOKENS, effort=SQL_EFFORT,
-                                  cache_prefix=schema_prefix, stage="query_model")
+                                  cache_prefix=schema_prefix, stage="query_model",
+                                  timeout=SQL_TIMEOUT)
             except Exception as repair_exc:
                 _log_gap(question, "model_error", type(repair_exc).__name__, sql)
                 return _cannot("I couldn't retrieve the requested information. Please try a more specific question; this does not establish a data gap.", sql=sql)
@@ -686,9 +708,17 @@ def _answer_question(q: Question):
         last_sections = None
         calculations = []
         for attempt in range(2):
-            _progress("answer" if attempt == 0 else "rewrite")
+            if attempt == 0:
+                # The data is in: light up the map now rather than after the
+                # answer is written. Tract ids only; no figures.
+                preview_geoids, preview_scope, _ = _map_selection(question, executed_sql, rows)
+                _progress("answer", preview={"highlight_geoids": preview_geoids,
+                                             "highlight_scope": preview_scope})
+            else:
+                _progress("rewrite")
             try:
-                response = _ask_claude(answer_prompt, max_tokens=ANSWER_MAX_TOKENS, effort=ANSWER_EFFORT)
+                response = _ask_claude(answer_prompt, max_tokens=ANSWER_MAX_TOKENS, effort=ANSWER_EFFORT,
+                                       timeout=ANSWER_TIMEOUT)
             except Exception as exc:
                 _log_gap(question, "model_error", type(exc).__name__, executed_sql)
                 break
@@ -703,6 +733,11 @@ def _answer_question(q: Question):
                 summary = candidate
                 if len(sections) == 2:
                     next_step = sections[1].strip() or None
+                break
+            if attempt == 0 and time.perf_counter() - started > REWRITE_DEADLINE:
+                # Out of time for a second draft: keep the sentences whose
+                # numbers check (below) rather than make the user wait.
+                _log_gap(question, "rewrite_skipped_deadline", None, executed_sql)
                 break
             if attempt == 0:
                 named = ", ".join(unverified)
@@ -731,24 +766,7 @@ def _answer_question(q: Question):
             next_step = None
 
     _table, _headers = _to_label_value(rows)
-    # Tracts to light up. Aggregate queries (e.g. GROUP BY category) carry no
-    # geoid, so fall back to any place named in the question itself.
-    highlights = list(dict.fromkeys(str(r["geoid"]) for r in rows
-                                    if re.fullmatch(r"24031\d{6}", str(r.get("geoid")))))
-    if not highlights:
-        highlights = _sql_geoids(executed_sql) or _place_geoids(question)
-    # An answer with no place in it is an answer about Silver Spring as a
-    # whole, so show that rather than leaving the map inert. The frontend
-    # draws this scope softly instead of as a selection.
-    if not highlights:
-        highlights = list(SILVER_SPRING_GEOIDS)
-    # Whether the model filtered to Silver Spring itself or we defaulted to
-    # it, the answer is about the area rather than a selection inside it, so
-    # the map should wash it rather than light 19 tracts up like results.
-    scope = "area" if set(highlights) == set(SILVER_SPRING_GEOIDS) else "selection"
-    geography = _answer_geography(executed_sql, rows, highlights)
-    if geography['kind'] == 'census_place':
-        highlights, scope = [], 'boundary'
+    highlights, scope, geography = _map_selection(question, executed_sql, rows)
 
     cleaned = _no_meta_sentences(summary)
     if cleaned != summary:
@@ -785,6 +803,30 @@ def _answer_question(q: Question):
 
 
 # ---------------------------------------------------------------- helpers
+
+def _map_selection(question, executed_sql, rows):
+    """Which tracts the map lights up, and how. Depends only on the query and
+    its rows, so the page can show it while the answer is still being written."""
+    # Aggregate queries (e.g. GROUP BY category) carry no geoid, so fall
+    # back to any place named in the question itself.
+    highlights = list(dict.fromkeys(str(r["geoid"]) for r in rows
+                                    if re.fullmatch(r"24031\d{6}", str(r.get("geoid")))))
+    if not highlights:
+        highlights = _sql_geoids(executed_sql) or _place_geoids(question)
+    # An answer with no place in it is an answer about Silver Spring as a
+    # whole, so show that rather than leaving the map inert. The frontend
+    # draws this scope softly instead of as a selection.
+    if not highlights:
+        highlights = list(SILVER_SPRING_GEOIDS)
+    # Whether the model filtered to Silver Spring itself or we defaulted to
+    # it, the answer is about the area rather than a selection inside it, so
+    # the map should wash it rather than light 19 tracts up like results.
+    scope = "area" if set(highlights) == set(SILVER_SPRING_GEOIDS) else "selection"
+    geography = _answer_geography(executed_sql, rows, highlights)
+    if geography['kind'] == 'census_place':
+        highlights, scope = [], 'boundary'
+    return highlights, scope, geography
+
 
 # The rewrite step shows the model its own failed draft, and it sometimes
 # answers the correction instead of the user ("My last answer was wrong...",
