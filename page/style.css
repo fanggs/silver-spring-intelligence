@@ -640,3 +640,6 @@ html{scroll-behavior:auto;}
 .about-links a,.about-back{display:inline-flex;min-height:44px;padding:10px 16px;align-items:center;gap:6px;border:1px solid var(--forest-light);border-radius:100px;text-decoration:none;}
 [data-theme="dark"] .about-body a{color:var(--lime);}
 [data-theme="dark"] .about-links a,[data-theme="dark"] .about-back{border-color:var(--lime);}
+
+/* Data shown while the written answer is still coming */
+.app-answer-text.is-pending{color:var(--muted);font-style:italic;font-size:15px;}

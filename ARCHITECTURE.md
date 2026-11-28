@@ -112,8 +112,11 @@ check removed. This caps the worst case at about 85 seconds
 instead of four 60 s calls in a row.
 
 When the data is back and the answer still has to be written, `/ask/stream`
-sends the map selection (tract ids and a scope word, no figures) with the
-`answer` step, so the map lights up while the sentence is written.
+sends everything code builds from the rows (map selection, chart, statistic,
+tables, sources) with the `answer` step, with no summary. The page shows it
+under "Here is the data. Writing a short summary…" while the sentence is
+written (Nov 28: first data on screen at a median of 10.9 s against 15.9 s
+for the full answer). Every number in the preview is a database value.
 
 Two calls, with the database between them. The call that sees the question
 never sees a number; the call that writes the sentence only sees numbers the
@@ -170,10 +173,8 @@ host makes both unnecessary.
 
 **Answer cache.** Answers are kept for a day, keyed on the question, the
 model and the database file's identity, so a data refresh or deploy starts
-fresh. At startup, and hourly after, the same thread answers the example
-questions shown on the page (read from `page/index.html`) through the normal
-pipeline, so clicking one returns in milliseconds. Release checks send
-`Cache-Control: no-cache` and always run the full pipeline. If the server is asleep anyway, the page says it is
+fresh and any repeated question is instant. Nothing is pre-answered: every
+question takes the same path. Release checks send `Cache-Control: no-cache`. If the server is asleep anyway, the page says it is
 starting instead of looking stuck, and waits up to 90 s for map layers and
 120 s for an answer.
 
@@ -299,6 +300,16 @@ query step needs its thinking.
 **Writing the main query and the evidence queries in two parallel calls**
 saved nothing: the evidence call does all the same thinking and takes as
 long as the original single call.
+
+**Two quick drafts without thinking, used when they agree** (Nov 28), raced
+against the usual query. Agreement caught real errors (42 vs 43 restaurants),
+but "one draft's numbers inside the other's" let a narrower draft drop part
+of the question (Bethesda in a Silver Spring vs Bethesda question), and with
+exact agreement required it fired on 4 of 28 questions, did not move the
+median, and dropped a caveat the usual path gave. Removed.
+
+**Pre-answering the page's example questions** made those five instant but
+nothing else; removed in favour of the general day-long cache.
 
 **Prompt-cache misses are not a speed cost.** A miss on the ~24,800-token
 prompt starts within ~0.5-0.8 s, the same as a hit.

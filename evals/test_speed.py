@@ -27,15 +27,16 @@ class StreamPreviewTests(unittest.TestCase):
             response = TestClient(main.app).post("/ask/stream", json={"question": "Which cafes are in Silver Spring?"})
         return [json.loads(line) for line in response.text.splitlines() if line.strip()]
 
-    def test_map_preview_arrives_with_the_answer_step_and_matches_the_result(self):
+    def test_data_preview_arrives_before_the_answer_and_matches_it(self):
         events = self.events([SHORT_SQL, "Several cafes are mapped. Their addresses are in the list below."])
         answer_step = next(e for e in events if e.get("stage") == "answer")
-        result = events[-1]["result"]
-        self.assertEqual(answer_step["preview"]["highlight_geoids"], result["highlight_geoids"])
-        self.assertEqual(answer_step["preview"]["highlight_scope"], result["highlight_scope"])
-        # The preview carries tract ids and a scope word only, never figures.
-        self.assertEqual(set(answer_step["preview"]), {"highlight_geoids", "highlight_scope"})
-        self.assertIn("24031701601", result["sql"])
+        preview, result = answer_step["preview"], events[-1]["result"]
+        # No model-written text in the preview: only what code built from rows.
+        self.assertIsNone(preview["summary"])
+        self.assertIsNone(preview["next_step"])
+        for key in ("rows", "supporting_data", "highlight_geoids", "highlight_scope", "sources", "sql", "visual"):
+            self.assertEqual(preview[key], result[key], key)
+        self.assertTrue(result["summary"].startswith("Several cafes"))
 
 
 class DeadlineTests(unittest.TestCase):
@@ -64,23 +65,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class WarmAnswerTests(unittest.TestCase):
-    def test_example_questions_come_from_the_page(self):
-        questions = main._page_questions()
-        self.assertIn("How many restaurants are in Fenton Village?", questions)
-        self.assertTrue(all("&" not in q or "&amp;" not in q for q in questions))
-
-    def test_warming_answers_each_uncached_question_once(self):
-        main.answer_cache = main.AnswerCache()
-        with patch.object(main, "_page_questions", return_value=["Which cafes are in Silver Spring?"]), \
-             patch.object(main, "_ask_claude", side_effect=[SHORT_SQL, "Several cafes are mapped."]) as ask, \
-             patch.object(main, "_log_gap"):
-            main._warm_answers()
-            main._warm_answers()          # already cached: no model calls
-            self.assertEqual(ask.call_count, 2)
-            response = TestClient(main.app).post("/ask", json={"question": "Which cafes are in Silver Spring?"})
-        self.assertEqual(response.headers["X-CivicLens-Cache"], "HIT")
-
+class BackgroundAndCacheTests(unittest.TestCase):
     def test_answers_are_kept_for_a_day_within_one_data_snapshot(self):
         self.assertEqual(main.AnswerCache().ttl, 86400)
 
